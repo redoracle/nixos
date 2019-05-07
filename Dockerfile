@@ -1,6 +1,7 @@
 # Dockerfile to create an environment that contains the Nix package manager.
 
 FROM alpine
+MAINTAINER RedOracle
 
 # Enable HTTPS support in wget.
 #RUN apk add --no-cache --update openssl curl
