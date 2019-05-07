@@ -2,7 +2,7 @@ services:
   - docker
 env:
   global:
-    - IMAGE_NAME="redoracle/nixos_2.2.2"
+    - IMAGE_NAME="redoracle/nixos"
     - DOCKER_OPTS="--experimental=true"
 
 before_script:
