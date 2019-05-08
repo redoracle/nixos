@@ -10,7 +10,7 @@ MAINTAINER RedOracle
 RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories \
   && apk update \
   && apk upgrade \
-  && apk add --update openssl curl bash autoconf gcc make \ 
+  && apk add --update openssl curl bash \ 
   && GETTER=$(curl https://nixos.org/releases/nix/latest/ -o index.html) \
   && DFILE=$(cat index.html | grep tar.bz2 | cut -d "\"" -f 8 | grep x86_64-linux | head -1) \
   && wget https://nixos.org/releases/nix/latest/$DFILE \
@@ -18,7 +18,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositori
   && rm nix-*-x86_64-linux.tar.bz2 \
   && cd nix-* \
   && bash \
-  && USER="root" \
+  && export USER="root" \
   && ./install \
   && . /root/.nix-profile/etc/profile.d/nix.sh \
   && addgroup -g 30000 -S nixbld \
