@@ -18,7 +18,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositori
   && rm nix-*-x86_64-linux.tar.bz2 \
   && cd nix-* \
   && bash \
-  && declare -x USER="root" \
+  && USER="root" \
   && ./install \
   && . /root/.nix-profile/etc/profile.d/nix.sh \
   && addgroup -g 30000 -S nixbld \
