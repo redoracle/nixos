@@ -11,21 +11,17 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositori
   && apk update \
   && apk upgrade \
   && apk add --update openssl curl bash sudo \ 
+  && addgroup nixbld
   && GETTER=$(curl https://nixos.org/releases/nix/latest/ -o index.html) \
   && DFILE=$(cat index.html | grep tar.bz2 | cut -d "\"" -f 8 | grep x86_64-linux | head -1) \
   && wget https://nixos.org/releases/nix/latest/$DFILE \
   && tar xjf nix-*-x86_64-linux.tar.bz2 \
-  && rm nix-*-x86_64-linux.tar.bz2 \
-  && cd nix-* \
-  && bash \
-  && export USER="root" \
-  && ./install \
-  && . /root/.nix-profile/etc/profile.d/nix.sh \
   && addgroup -g 30000 -S nixbld \
   && for i in $(seq 1 30); do adduser -S -D -h /var/empty -g "Nix build user $i" -u $((30000 + i)) -G nixbld nixbld$i ; done \
   && mkdir -m 0755 /etc/nix \
   && echo 'sandbox = false' > /etc/nix/nix.conf \
   && mkdir -m 0755 /nix && USER=root sh nix-*-x86_64-linux/install \
+  && . /root/.nix-profile/etc/profile.d/nix.sh \
   && ln -s /nix/var/nix/profiles/default/etc/profile.d/nix.sh /etc/profile.d/ \
   && rm -r /nix-*-x86_64-linux* \
   && rm -rf /var/cache/apk/* \
