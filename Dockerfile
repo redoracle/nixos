@@ -3,16 +3,22 @@
 FROM alpine
 MAINTAINER RedOracle
 
+########################
+# One layer execution: #
+########################
 # Enable HTTPS support in wget.
-#RUN apk add --no-cache --update openssl curl
-
+# Adding edge repo
+# fix CVE-2019-5021
+# Getting the latest NX version
 # Download Nix and install it into the system.
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories \ # Adding edge repo
-  && sed -i -e 's/^root::/root:!:/' /etc/shadow \ # fix CVE-2019-5021
+
+# One layer execution:
+RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositories \ 
+  && sed -i -e 's/^root::/root:!:/' /etc/shadow \ 
   && apk update \
   && apk upgrade \
   && apk add --update openssl curl bash sudo \ 
-  && GETTER=$(curl https://nixos.org/releases/nix/latest/ -o index.html) \ # Getting the latest NX version
+  && GETTER=$(curl https://nixos.org/releases/nix/latest/ -o index.html) \ 
   && DFILE=$(cat index.html | grep tar.bz2 | cut -d "\"" -f 8 | grep x86_64-linux | head -1) \
   && wget https://nixos.org/releases/nix/latest/$DFILE \
   && tar xjf nix-*-x86_64-linux.tar.bz2 \
