@@ -26,10 +26,10 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositori
   && for i in $(seq 1 30); do adduser -S -D -h /var/empty -g "Nix build user $i" -u $((30000 + i)) -G nixbld nixbld$i ; done \
   && mkdir -m 0755 /etc/nix \
   && echo 'sandbox = false' > /etc/nix/nix.conf \
-  && mkdir -m 0755 /nix && USER=root sh nix-*/install \
+  && mkdir -m 0755 /nix && USER=root bash nix-*/install \
   && . /root/.nix-profile/etc/profile.d/nix.sh \
   && ln -s /nix/var/nix/profiles/default/etc/profile.d/nix.sh /etc/profile.d/ \
-  && rm -r /nix-*-x86_64-linux* \
+  && rm -r /nix-* \
   && rm -rf /var/cache/apk/* \
   && /nix/var/nix/profiles/default/bin/nix-collect-garbage --delete-old \
   && /nix/var/nix/profiles/default/bin/nix-store --optimise \
