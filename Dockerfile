@@ -19,7 +19,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/main" >> /etc/apk/repositori
   && apk upgrade \
   && apk add --update openssl curl bash sudo \ 
   && GETTER=$(curl https://nixos.org/releases/nix/latest/ -o index.html) \ 
-  && DFILE=$(cat index.html | grep tar.bz2 | cut -d "\"" -f 8 | head -1) \
+  && DFILE=$(cat index.html | grep x86_64-linux.tar.xz | cut -d "\"" -f 8 | head -1) \
   && wget https://nixos.org/releases/nix/latest/$DFILE \
   && DIRE=$(echo $DFILE | rev | cut -f 2- -d '.' | rev | rev | cut -f 2- -d '.' | rev) \
   && tar xjf $DFILE \
