@@ -88,8 +88,7 @@ ONBUILD ENV \
 RUN ln -s /nix/var/nix/profiles/default/etc/profile.d/nix.sh /etc/profile.d/
 
 # Clean up and optimize the Nix store
-RUN /nix/var/nix/profiles/default/bin/nix-collect-garbage --delete-old && \
-    /nix/var/nix/profiles/default/bin/nix-store --optimise && \
+RUN /nix/var/nix/profiles/default/bin/nix-store --optimise && \
     /nix/var/nix/profiles/default/bin/nix-store --verify --check-contents \
     rm -rf /var/cache/apk/*
 
