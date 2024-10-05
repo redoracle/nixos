@@ -52,6 +52,11 @@ ENV USER=nixuser \
 # Source the Nix profile in the shell
 RUN echo ". /home/nixuser/.nix-profile/etc/profile.d/nix.sh" >> /home/nixuser/.bashrc
 
+# Check the Nix version and export it as an environment variable
+RUN NIX_VERSION=$(nix-env --version | cut -d ' ' -f 3) && \
+    echo "NIX_VERSION=${NIX_VERSION}" >> /home/nixuser/.bashrc && \
+    export NIX_VERSION
+    
 # Clean up APK cache to reduce image size
 USER root
 RUN rm -rf /var/cache/apk/*
