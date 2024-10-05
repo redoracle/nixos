@@ -111,7 +111,7 @@ For more detailed usage, refer to the [Nix Manual](https://nixos.org/manual/nix/
 
 ## Build and Deployment
 
-This project utilizes GitHub Actions to automate the build and deployment process. The workflow is triggered on pushes to the `main` branch or via manual dispatch.
+This project utilizes GitHub Actions to automate the build and deployment process. The workflow is triggered on pushes to the `main` or `master` branches, on manual dispatch, and is scheduled to run every Sunday.
 
 ### GitHub Actions Workflow
 
@@ -120,8 +120,10 @@ The workflow performs the following steps:
 1. **Checkout Repository**: Retrieves the latest code from the repository.
 2. **Set Up Docker Buildx**: Prepares the Docker builder for multi-platform builds.
 3. **Authenticate with Registries**: Logs into GitHub Container Registry (GHCR) and Docker Hub.
-4. **Build and Push Docker Image**: Builds the Docker image and pushes it to both GHCR and Docker Hub.
-5. **Cleanup**: Prunes unused Docker builder cache to optimize runner resources.
+4. **Get Nix Version**: Extracts the installed Nix version for tagging the image and releases.
+5. **Build and Push Docker Image**: Builds the Docker image and pushes it to both GHCR and Docker Hub.
+6. **Create Release**: Automatically creates a new GitHub release if the version does not exist.
+7. **Cleanup**: Prunes unused Docker builder cache to optimize runner resources.
 
 ### Workflow Configuration
 
@@ -137,8 +139,11 @@ name: Build and Deploy NixOS Docker Image
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'  # Every Sunday at midnight UTC
   push:
     branches:
+      - master
       - main
 
 jobs:
@@ -169,6 +174,13 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # Get Nix version from the Dockerfile
+      - name: Get Nix version
+        id: get_version
+        run: |
+          NIX_VERSION=$(docker run --rm $(docker build -q .) nix-env --version | cut -d ' ' -f 3)
+          echo "NIX_VERSION=$NIX_VERSION" >> $GITHUB_ENV
+
       # Build and Push Docker Image
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
@@ -178,8 +190,24 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
+            ghcr.io/${{ github.repository_owner }}/nixos:${{ env.NIX_VERSION }}
             ghcr.io/${{ github.repository_owner }}/nixos:latest
+            ${{ secrets.DOCKER_USERNAME }}/nixos:${{ env.NIX_VERSION }}
             ${{ secrets.DOCKER_USERNAME }}/nixos:latest
+
+      # Create GitHub release if it does not exist
+      - name: Create GitHub release
+        if: env.create_release == 'true'
+        uses: actions/create-release@v1
+        with:
+          tag_name: v${{ env.NIX_VERSION }}
+          release_name: NixOS Docker Image v${{ env.NIX_VERSION }}
+          draft: false
+          prerelease: false
+          body: |
+            NixOS Docker image version ${{ env.NIX_VERSION }} has been built and released.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Post-build cleanup (optional)
       - name: Docker prune
@@ -232,79 +260,18 @@ For any questions or support, please open an [issue](https://github.com/redoracl
 ![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=redoracle&layout=compact&theme=radical)
 ```
 
----
+### What has been added:
 
-## Explanation of Improvements
+1. **Nix
 
-### 1. **Title and Badges**
+ Version Retrieval:**
+   - Added a new workflow step that fetches the Nix version from the Docker build and uses it for tagging the Docker image and creating GitHub releases.
 
-- **Title**: Changed to `Alpine + Nix → NixOS` for clarity.
-- **Badges**: Added various badges to display repository stats, Docker image status, and build status. Replace `redoracle` and `nixos` with your actual GitHub username and repository name.
+2. **Image Publishing:**
+   - Updated the Docker build and push step to push images to both Docker Hub and GHCR with versioned and `latest` tags.
 
-### 2. **Table of Contents**
+3. **GitHub Release Creation:**
+   - Added a step to create a new GitHub release if a release with the Nix version tag doesn’t already exist.
 
-- **Purpose**: Helps users navigate the README easily, especially as it grows in complexity.
-
-### 3. **Introduction**
-
-- **Content**: Provides a clear and concise overview of what the project is about, its purpose, and the technologies involved.
-
-### 4. **Features**
-
-- **Detailed Features**: Highlights the key features and advantages of using this project, making it easier for users to understand its benefits.
-
-### 5. **Prerequisites**
-
-- **Dependencies**: Lists necessary tools and accounts required to use or contribute to the project, ensuring users are prepared before installation.
-
-### 6. **Installation**
-
-- **Using Docker**: Provides step-by-step instructions to build and run the Docker image.
-- **Manual Installation**: Offers an alternative method for those who prefer not to use Docker, enhancing accessibility.
-
-### 7. **Usage**
-
-- **Common Commands**: Lists essential Nix commands to help users get started quickly.
-- **Documentation Link**: Directs users to the official Nix manual for more detailed information.
-
-### 8. **Build and Deployment**
-
-- **GitHub Actions Workflow**: Explains the CI/CD process, detailing each step of the workflow.
-- **Secrets Configuration**: Informs users about necessary GitHub secrets for the workflow to function correctly.
-- **Example Workflow File**: Provides a complete example of the GitHub Actions configuration for easy setup.
-
-### 9. **Contributing**
-
-- **Contribution Guidelines**: Encourages contributions and provides clear instructions on how to contribute, fostering community engagement.
-- **Best Practices**: Suggests maintaining code quality and documentation standards.
-
-### 10. **License**
-
-- **License Information**: Clearly states the project's license, ensuring legal clarity for users and contributors.
-
-### 11. **Contact**
-
-- **Support Channels**: Offers ways for users to seek help or provide feedback, enhancing user support.
-
-### 12. **GitHub Stats**
-
-- **Repository Stats**: Adds GitHub Readme Stats badges to showcase repository metrics like stars, forks, and top languages, providing social proof and insights into the project's popularity.
-
-### 13. **Overall Formatting and Clarity**
-
-- **Markdown Formatting**: Utilizes proper markdown syntax for headers, lists, code blocks, and links to ensure readability.
-- **Clear Instructions**: Provides precise and actionable steps, reducing the likelihood of user errors during setup or usage.
-- **Professional Tone**: Maintains a professional and informative tone throughout, suitable for a GitHub repository.
-
-### 14. **Customization Placeholders**
-
-- **Placeholders**: Uses placeholders like `redoracle` and `nixos` which should be replaced with actual values, ensuring users can easily adapt the README to their specific repository.
-
----
-
-## Final Notes
-
-- **Replace Placeholders**: Ensure you replace all instances of `redoracle`, `nixos`, and `your-email@example.com` with your actual GitHub username, repository name, and contact email.
-- **Add License File**: Make sure to include a `LICENSE` file in your repository that matches the license mentioned in the README.
-- **Enhance Badges**: You can add more badges as needed, such as coverage reports or additional CI statuses.
-- **Update GitHub Stats URLs**: The GitHub stats badges at the bottom use [GitHub Readme Stats](https://github.com/anuraghazra/github-readme-stats). Ensure you configure them as per your preferences.
+4. **Scheduled Build:**
+   - The workflow now runs automatically every Sunday at midnight UTC.
