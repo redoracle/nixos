@@ -18,54 +18,17 @@ RUN apk update && \
     xz \
     gnupg
 
-# Set error handling
-ENV BASE_URL="https://r.jina.ai/https://releases.nixos.org/?prefix=nix/"
+# Copy the install_nix.sh script from the local directory to the container
+COPY install_nix.sh /tmp/install_nix.sh
 
-# Fetch the latest Nix version dynamically
-RUN set -e && \
-    echo "Fetching latest Nix version..." && \
-    MD_CONTENT=$(curl -s "$BASE_URL") || (echo "Failed to fetch the Markdown content." && exit 1) && \
-    VERSIONS=$(echo "$MD_CONTENT" | grep -E -o '\[nix-[0-9]+\.[0-9]+\.[0-9]+/\]' | sed 's/\[nix-\([0-9]\+\.[0-9]\+\.[0-9]\+\)\/\]/\1/') || \
-    (echo "Failed to extract versions." && exit 1) && \
-    if [ -z "$VERSIONS" ]; then \
-        echo "No versions found in the Markdown content." && exit 1; \
-    fi && \
-    echo "Available versions found:" && \
-    echo "$VERSIONS" && \
-    LATEST_VERSION=$(echo "$VERSIONS" | sort -V | tail -n1) || \
-    (echo "Failed to determine the latest version." && exit 1) && \
-    if [ -z "$LATEST_VERSION" ]; then \
-        echo "Could not determine the latest version." && exit 1; \
-    fi && \
-    echo "Latest version identified: $LATEST_VERSION" && \
-    DOWNLOAD_URL="https://releases.nixos.org/nix/nix-${LATEST_VERSION}/nix-${LATEST_VERSION}-x86_64-linux.tar.xz" && \
-    echo "Constructed download URL: $DOWNLOAD_URL" && \
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$DOWNLOAD_URL") && \
-    if [ "$HTTP_STATUS" -ne 200 ]; then \
-        echo "Download URL not found (HTTP Status: $HTTP_STATUS)." && exit 1; \
-    fi && \
-    echo "Downloading the latest Nix installer..." && \
-    curl -O "$DOWNLOAD_URL" || (echo "Failed to download the installer." && exit 1) && \
-    echo "Download completed successfully: nix-${LATEST_VERSION}-x86_64-linux.tar.xz"
+# Make sure the script is executable
+RUN chmod +x /tmp/install_nix.sh
 
-# Decompress and extract the downloaded file using xz and tar
-RUN set -e && \
-    xz -d -v nix-${LATEST_VERSION}-x86_64-linux.tar.xz && \
-    tar xvf nix-${LATEST_VERSION}-x86_64-linux.tar
-
-# Create Nix group and users
-RUN addgroup -g 30000 -S nixbld && \
-    for i in $(seq 1 30); do adduser -S -D -h /var/empty -g "Nix build user $i" -u $((30000 + i)) -G nixbld nixbld$i ; done
-
-# Install Nix
-RUN mkdir -m 0755 /etc/nix && \
-    echo 'sandbox = false' > /etc/nix/nix.conf && \
-    mkdir -m 0755 /nix && \
-    ./nix-${LATEST_VERSION}-x86_64-linux/install
+# Run the script to install Nix
+RUN /tmp/install_nix.sh
 
 # Clean up builder image to keep it small
-RUN rm -rf nix-${LATEST_VERSION}-x86_64-linux* && \
-    rm -rf /var/cache/apk/*
+RUN rm -rf /var/cache/apk/*
 
 ####################
 # Final Production #
