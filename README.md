@@ -5,7 +5,6 @@
 ![GitHub Issues](https://img.shields.io/github/issues/redoracle/nixos.svg)
 ![GitHub License](https://img.shields.io/github/license/redoracle/nixos.svg)
 ![Docker Image Size](https://img.shields.io/docker/image-size/ghcr.io/redoracle/nixos/latest)
-![Docker Pulls](https://img.shields.io/docker/pulls/ghcr.io/redoracle/nixos.svg)
 ![Build Status](https://github.com/redoracle/nixos/actions/workflows/docker-image.yml/badge.svg)
 
 ## Table of Contents
