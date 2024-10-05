@@ -1,4 +1,5 @@
 # Dockerfile to create an environment that contains the Nix package manager.
+
 FROM alpine:latest AS builder
 
 LABEL maintainer="RedOracle"
@@ -14,6 +15,7 @@ RUN apk update && \
     openssl \
     grep \
     sed \
+    xz \
     gnupg
 
 # Set error handling
@@ -46,9 +48,10 @@ RUN set -e && \
     curl -O "$DOWNLOAD_URL" || (echo "Failed to download the installer." && exit 1) && \
     echo "Download completed successfully: nix-${LATEST_VERSION}-x86_64-linux.tar.xz"
 
-# Extract the downloaded file
+# Decompress and extract the downloaded file using xz and tar
 RUN set -e && \
-    tar xf nix-${LATEST_VERSION}-x86_64-linux.tar.xz
+    xz -d -v nix-${LATEST_VERSION}-x86_64-linux.tar.xz && \
+    tar xvf nix-${LATEST_VERSION}-x86_64-linux.tar
 
 # Create Nix group and users
 RUN addgroup -g 30000 -S nixbld && \
