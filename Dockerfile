@@ -12,23 +12,29 @@ RUN apk update && \
     tar \
     sudo \
     openssl \
-    jq
+    grep \
+    sed \
+    gnupg
 
-# Set error handling and helper functions to clean up after installation.
-RUN set -e
-
-# Define base URL for fetching the latest Nix version
+# Set error handling
 ENV BASE_URL="https://r.jina.ai/https://releases.nixos.org/?prefix=nix/"
 
 # Fetch the latest Nix version dynamically
-RUN echo "Fetching latest Nix version..." && \
+RUN set -e && \
+    echo "Fetching latest Nix version..." && \
     MD_CONTENT=$(curl -s "$BASE_URL") || (echo "Failed to fetch the Markdown content." && exit 1) && \
-    VERSIONS=$(echo "$MD_CONTENT" | grep -oP '\[nix-\d+\.\d+\.\d+/\]' | sed 's/\[nix-\(.*\)\/\]/\1/') || \
+    VERSIONS=$(echo "$MD_CONTENT" | grep -E -o '\[nix-[0-9]+\.[0-9]+\.[0-9]+/\]' | sed 's/\[nix-\([0-9]\+\.[0-9]\+\.[0-9]\+\)\/\]/\1/') || \
     (echo "Failed to extract versions." && exit 1) && \
     if [ -z "$VERSIONS" ]; then \
         echo "No versions found in the Markdown content." && exit 1; \
     fi && \
-    LATEST_VERSION=$(echo "$VERSIONS" | sort -V | tail -n1) || (echo "Failed to determine the latest version." && exit 1) && \
+    echo "Available versions found:" && \
+    echo "$VERSIONS" && \
+    LATEST_VERSION=$(echo "$VERSIONS" | sort -V | tail -n1) || \
+    (echo "Failed to determine the latest version." && exit 1) && \
+    if [ -z "$LATEST_VERSION" ]; then \
+        echo "Could not determine the latest version." && exit 1; \
+    fi && \
     echo "Latest version identified: $LATEST_VERSION" && \
     DOWNLOAD_URL="https://releases.nixos.org/nix/nix-${LATEST_VERSION}/nix-${LATEST_VERSION}-x86_64-linux.tar.xz" && \
     echo "Constructed download URL: $DOWNLOAD_URL" && \
@@ -36,11 +42,13 @@ RUN echo "Fetching latest Nix version..." && \
     if [ "$HTTP_STATUS" -ne 200 ]; then \
         echo "Download URL not found (HTTP Status: $HTTP_STATUS)." && exit 1; \
     fi && \
+    echo "Downloading the latest Nix installer..." && \
     curl -O "$DOWNLOAD_URL" || (echo "Failed to download the installer." && exit 1) && \
     echo "Download completed successfully: nix-${LATEST_VERSION}-x86_64-linux.tar.xz"
 
 # Extract the downloaded file
-RUN tar xf nix-${LATEST_VERSION}-x86_64-linux.tar.xz
+RUN set -e && \
+    tar xf nix-${LATEST_VERSION}-x86_64-linux.tar.xz
 
 # Create Nix group and users
 RUN addgroup -g 30000 -S nixbld && \
@@ -61,6 +69,18 @@ RUN rm -rf nix-${LATEST_VERSION}-x86_64-linux* && \
 ####################
 
 FROM alpine:latest
+
+# Install necessary packages in the final image
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache \
+    bash \
+    curl \
+    sudo \
+    openssl \
+    grep \
+    sed \
+    gnupg
 
 # Copy Nix installation from the builder stage
 COPY --from=builder /nix /nix
