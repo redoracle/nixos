@@ -2,6 +2,8 @@ name: Build and Deploy NixOS Docker Image
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'  # Every Sunday at midnight UTC
   push:
     branches:
       - master
@@ -35,7 +37,26 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Step 5: Build and Push Docker Image to GitHub Container Registry (GHCR) and Docker Hub
+      # Step 5: Get the Nix version from the Dockerfile
+      - name: Get Nix version
+        id: get_version
+        run: |
+          NIX_VERSION=$(docker run --rm $(docker build -q .) nix-env --version | cut -d ' ' -f 3)
+          echo "NIX_VERSION=$NIX_VERSION" >> $GITHUB_ENV
+
+      # Step 6: Check if a release already exists for this version
+      - name: Check if GitHub release exists
+        id: check_release
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ env.NIX_VERSION }})
+          if [ "$response" -eq 404 ]; then
+            echo "Release does not exist. Creating one."
+            echo "create_release=true" >> $GITHUB_ENV
+          else
+            echo "Release already exists."
+            echo "create_release=false" >> $GITHUB_ENV
+
+      # Step 7: Build and Push Docker Image with version tag
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
@@ -44,9 +65,25 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
+            ghcr.io/${{ github.repository_owner }}/nixos:${{ env.NIX_VERSION }}
             ghcr.io/${{ github.repository_owner }}/nixos:latest
+            ${{ secrets.DOCKER_USERNAME }}/nixos:${{ env.NIX_VERSION }}
             ${{ secrets.DOCKER_USERNAME }}/nixos:latest
 
-      # Step 6: Post-build cleanup (optional)
+      # Step 8: Create a GitHub release if it does not exist
+      - name: Create GitHub release
+        if: env.create_release == 'true'
+        uses: actions/create-release@v1
+        with:
+          tag_name: v${{ env.NIX_VERSION }}
+          release_name: NixOS Docker Image v${{ env.NIX_VERSION }}
+          draft: false
+          prerelease: false
+          body: |
+            NixOS Docker image version ${{ env.NIX_VERSION }} has been built and released.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 9: Post-build cleanup (optional)
       - name: Docker prune
         run: docker builder prune --force
