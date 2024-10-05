@@ -49,12 +49,13 @@ jobs:
         id: check_release
         run: |
           response=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ env.NIX_VERSION }})
-          if [ "$response" -eq 404 ]; then
+          if [ "$response" = "404" ]; then
             echo "Release does not exist. Creating one."
             echo "create_release=true" >> $GITHUB_ENV
           else
             echo "Release already exists."
             echo "create_release=false" >> $GITHUB_ENV
+          fi
 
       # Step 7: Build and Push Docker Image with version tag
       - name: Build and Push Docker Image
