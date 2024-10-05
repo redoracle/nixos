@@ -27,8 +27,10 @@ RUN chmod +x /tmp/install_nix.sh
 # Run the script to install Nix
 RUN /tmp/install_nix.sh
 
-RUN  addgroup -g 30000 -S nixbld \
-  && for i in $(seq 1 30); do adduser -S -D -h /var/empty -g "Nix build user $i" -u $((30000 + i)) -G nixbld nixbld$i ; done 
+RUN mkdir -m 0755 /etc/nix \
+    && echo 'sandbox = false' > /etc/nix/nix.conf \
+    && mkdir -m 0755 /nix && USER=root sh /nix/install
+
 # Clean up builder image to keep it small
 RUN rm -rf /var/cache/apk/*
 

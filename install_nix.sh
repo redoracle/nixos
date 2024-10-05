@@ -70,11 +70,16 @@ curl -O --progress-bar "$DOWNLOAD_URL" || error_exit "Failed to download the ins
 echo "Download completed successfully: ${LATEST_VERSION}-x86_64-linux.tar.xz"
 
 # Decompress the tar.xz file
-echo "Decompressing: ${LATEST_VERSION}-x86_64-linux.tar.xz"
-xz -d -v "${LATEST_VERSION}-x86_64-linux.tar.xz" || error_exit "Failed to decompress the tar.xz file."
+echo "Decompressing: nix-${LATEST_VERSION}-x86_64-linux.tar.xz"
+xz -d -v "nix-${LATEST_VERSION}-x86_64-linux.tar.xz" || error_exit "Failed to decompress the tar.xz file."
 
 # Extract the tar file
-echo "Extracting: ${LATEST_VERSION}-x86_64-linux.tar"
-tar xvf "${LATEST_VERSION}-x86_64-linux.tar" || error_exit "Failed to extract the tar file."
+echo "Extracting: nix-${LATEST_VERSION}-x86_64-linux.tar"
+tar xvf "nix-${LATEST_VERSION}-x86_64-linux.tar" || error_exit "Failed to extract the tar file."
+
+# Rename the extracted directory to 'nix'
+mv "${LATEST_VERSION}-x86_64-linux" nix || error_exit "Failed to rename the extracted directory to 'nix'"
+
+echo "Extraction and renaming completed successfully."
 
 echo "Extraction completed successfully."
