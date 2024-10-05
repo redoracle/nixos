@@ -251,7 +251,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Contact
 
-For any questions or support, please open an [issue](https://github.com/redoracle/nixos/issues) or contact [your-email@example.com](mailto:your-email@example.com).
+For any questions or support, please open an [issue](https://github.com/redoracle/nixos/issues)
 
 ---
 
