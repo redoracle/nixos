@@ -25,9 +25,13 @@ BASE_URL="https://r.jina.ai/https://releases.nixos.org/?prefix=nix/"
 echo "Fetching release information from: $BASE_URL"
 MD_CONTENT=$(curl -s --retry 5 --retry-delay 5 "$BASE_URL") || error_exit "Failed to fetch the Markdown content."
 
+# Optional: Debugging - Uncomment the following line to see the fetched content
+# echo "$MD_CONTENT"
+
 # Extract version strings in the format nix-X.Y.Z/
 # The regex looks for patterns like [nix-2.3.6/]
-VERSIONS=$(echo "$MD_CONTENT" | grep -oE '\[nix-\d+\.\d+\.\d+/\]' | sed 's/\[nix-\(.*\)\/\]/\1/') || error_exit "Failed to extract versions."
+# Replaced \d with [0-9] for broader compatibility
+VERSIONS=$(echo "$MD_CONTENT" | grep -oE '\[nix-[0-9]+\.[0-9]+\.[0-9]+/\]' | sed 's/\[nix-\([0-9]+\.[0-9]+\.[0-9]+\)\/\]/\1/') || error_exit "Failed to extract versions."
 
 # Check if any versions were found
 if [ -z "$VERSIONS" ]; then
@@ -38,7 +42,7 @@ echo "Available versions found:"
 echo "$VERSIONS"
 
 # Sort the versions using version sort and get the latest one
-LATEST_VERSION=$(echo "$VERSIONS" | sort -V | tail -n1) || error_exit "Failed to determine the latest version."
+LATEST_VERSION=$(echo "$VERSIONS" | sort -V | tail -n1 | cut -d "[" -f 2 | cut -d "/" -f 1) || error_exit "Failed to determine the latest version."
 
 # Check if the latest version was successfully determined
 if [ -z "$LATEST_VERSION" ]; then
@@ -48,7 +52,7 @@ fi
 echo "Latest version identified: $LATEST_VERSION"
 
 # Construct the download URL for the latest Nix installer
-DOWNLOAD_URL="https://releases.nixos.org/nix/nix-${LATEST_VERSION}/nix-${LATEST_VERSION}-x86_64-linux.tar.xz"
+DOWNLOAD_URL="https://releases.nixos.org/nix/${LATEST_VERSION}/${LATEST_VERSION}-x86_64-linux.tar.xz"
 
 echo "Constructed download URL: $DOWNLOAD_URL"
 
@@ -63,14 +67,14 @@ fi
 echo "Downloading the latest Nix installer..."
 curl -O --progress-bar "$DOWNLOAD_URL" || error_exit "Failed to download the installer."
 
-echo "Download completed successfully: nix-${LATEST_VERSION}-x86_64-linux.tar.xz"
+echo "Download completed successfully: ${LATEST_VERSION}-x86_64-linux.tar.xz"
 
 # Decompress the tar.xz file
-echo "Decompressing: nix-${LATEST_VERSION}-x86_64-linux.tar.xz"
-xz -d -v "nix-${LATEST_VERSION}-x86_64-linux.tar.xz" || error_exit "Failed to decompress the tar.xz file."
+echo "Decompressing: ${LATEST_VERSION}-x86_64-linux.tar.xz"
+xz -d -v "${LATEST_VERSION}-x86_64-linux.tar.xz" || error_exit "Failed to decompress the tar.xz file."
 
 # Extract the tar file
-echo "Extracting: nix-${LATEST_VERSION}-x86_64-linux.tar"
-tar xvf "nix-${LATEST_VERSION}-x86_64-linux.tar" || error_exit "Failed to extract the tar file."
+echo "Extracting: ${LATEST_VERSION}-x86_64-linux.tar"
+tar xvf "${LATEST_VERSION}-x86_64-linux.tar" || error_exit "Failed to extract the tar file."
 
 echo "Extraction completed successfully."
