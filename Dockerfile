@@ -37,7 +37,9 @@ WORKDIR /home/nixuser
 USER nixuser
 
 # Install Nix in single-user mode
-RUN sh <(curl -L https://nixos.org/nix/install) --no-daemon --yes
+RUN curl -L https://nixos.org/nix/install | sh -s -- --no-daemon
+
+
 
 # Configure Nix for nixuser
 RUN mkdir -p -m 0755 /home/nixuser/.config/nix && \
