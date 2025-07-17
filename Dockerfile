@@ -27,9 +27,7 @@ WORKDIR /home/nixuser
 ENV HOME=/home/nixuser USER=nixuser
 
 # 4. Download installer and run with Bash explicitly
-RUN curl -L -o install-nix.sh https://nixos.org/nix/install && \
-    bash install-nix.sh --no-daemon && \
-    rm install-nix.sh
+RUN sh <(curl -L https://nixos.org/nix/install) --no-daemon --yes
 
 # 5. Configure nix.conf to disable sandbox
 RUN mkdir -p /home/nixuser/.config/nix && \
