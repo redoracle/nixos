@@ -1,7 +1,14 @@
+# File: .github/dependabot.yml
 version: 2
 updates:
-  # Maintain dependencies for GitHub Actions
+  # 🛠 Keep GitHub Actions workflows current
   - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # (Optional) Keep Dockerfile base images or action container images fresh
+  - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
