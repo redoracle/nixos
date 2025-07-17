@@ -3,18 +3,20 @@ name: Build and Deploy NixOS Docker Image
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * 0'  # Every Sunday at midnight UTC
+    - cron: '0 0 * * 0'  # Weekly on Sunday at UTC midnight
   push:
     branches:
-      - master
       - main
+      - master
+
+permissions:
+  contents: write
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
     env:
-      FALLBACK_TAG: dev  # Used only if NIX_VERSION cannot be determined
+      FALLBACK_TAG: dev
 
     steps:
       - name: Checkout repository
@@ -23,7 +25,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -39,63 +41,50 @@ jobs:
       - name: Extract and validate Nix version
         id: get_version
         run: |
-          echo "🔍 Building image and extracting Nix version..."
+          echo "🔍 Building image and extracting Nix version…"
           IMAGE_ID=$(docker build -q .)
           NIX_VERSION=$(docker run --rm "$IMAGE_ID" nix-env --version | awk '{print $3}')
-          
           if [[ -z "$NIX_VERSION" ]]; then
-            echo "❌ Failed to extract Nix version. Exiting."
+            echo "❌ Could not detect Nix version!"
             exit 1
           fi
-          
-          echo "✅ Extracted NIX_VERSION=$NIX_VERSION"
+          echo "✅ Detected NIX_VERSION=$NIX_VERSION"
           echo "NIX_VERSION=$NIX_VERSION" >> $GITHUB_ENV
-
-      - name: Debug Nix version
-        run: echo "Using NIX_VERSION=${{ env.NIX_VERSION }}"
-
-      - name: Check if GitHub release exists
-        id: check_release
-        run: |
-          echo "🔎 Checking if release for v${{ env.NIX_VERSION }} exists..."
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ env.NIX_VERSION }})
-
-          if [[ "$response" == "404" ]]; then
-            echo "create_release=true" >> $GITHUB_ENV
-            echo "✅ Release does not exist. Will create."
-          else
-            echo "create_release=false" >> $GITHUB_ENV
-            echo "ℹ️ Release already exists."
-          fi
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
-          push: true
+          file: Dockerfile
           platforms: linux/amd64,linux/arm64
+          push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/nixos:${{ env.NIX_VERSION }}
             ghcr.io/${{ github.repository_owner }}/nixos:latest
             ${{ secrets.DOCKER_USERNAME }}/nixos:${{ env.NIX_VERSION }}
             ${{ secrets.DOCKER_USERNAME }}/nixos:latest
 
+      - name: Check if GitHub Release exists
+        id: check_release
+        run: |
+          echo "🔎 Checking for existing release v${{ env.NIX_VERSION }}…"
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${{ env.NIX_VERSION }}")
+          echo "create_release=$([[ $status == 404 ]] && echo true || echo false)" >> $GITHUB_ENV
+          echo "Existing release status code: $status"
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
         if: env.create_release == 'true'
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.NIX_VERSION }}
           name: NixOS Docker Image v${{ env.NIX_VERSION }}
-          draft: false
-          prerelease: false
           body: |
             🚀 NixOS Docker image version **${{ env.NIX_VERSION }}** has been built and pushed to:
-            - GitHub Container Registry
-            - Docker Hub
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            • GitHub Container Registry  
+            • Docker Hub
+          draft: false
+          prerelease: false
 
       - name: Post-build cleanup
         run: docker builder prune --force
