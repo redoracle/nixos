@@ -1,52 +1,41 @@
 FROM alpine:latest
 
-LABEL maintainer="RedOracle"
-
-# 1. Install Bash, coreutils, xz, curl, etc.
+# Install dependencies
 RUN apk update && apk add --no-cache \
-    bash \
-    coreutils \
-    curl \
-    tar \
-    sed \
-    xz \
-    gnupg \
-    sudo \
-    shadow \
-    bash-completion
+    bash coreutils curl tar sed xz gnupg sudo shadow bash-completion
 
-# 2. Create non-root user
+# Add non-root user 'nixuser'
 RUN addgroup -g 1000 nixuser && \
     adduser -D -u 1000 -G nixuser -s /bin/bash nixuser && \
     echo "nixuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
     mkdir -m 0755 /nix && chown nixuser:nixuser /nix
 
-# 3. Switch to nixuser
 USER nixuser
 WORKDIR /home/nixuser
 ENV HOME=/home/nixuser USER=nixuser
 
-# 4. Download installer and run with Bash explicitly
-RUN sh <(curl -L https://nixos.org/nix/install) --no-daemon --yes
+# Pre-configure nix to disable sandbox and seccomp
+RUN mkdir -p ~/.config/nix && \
+    echo 'sandbox = false' >> ~/.config/nix/nix.conf && \
+    echo 'filter-syscalls = false' >> ~/.config/nix/nix.conf
 
-# 5. Apply nix configuration nix.conf to disable sandbox and SBF
-RUN mkdir -p /home/nixuser/.config/nix && \
-    { echo 'sandbox = false'; echo 'filter-syscalls = false'; } \
-    > /home/nixuser/.config/nix/nix.conf
+# Run installer explicitly with bash
+RUN curl -L https://nixos.org/nix/install | bash -s -- --no-daemon
 
-# 6. Initialize profile
+# Initialize Nix environment
 RUN . /home/nixuser/.nix-profile/etc/profile.d/nix.sh && \
     nix-channel --update
 
+# Add nix to path
 ENV PATH=/home/nixuser/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/nix/var/nix/profiles/default/sbin:$PATH \
     NIX_PATH=/nix/var/nix/profiles/per-user/nixuser/channels
 
-RUN echo ". /home/nixuser/.nix-profile/etc/profile.d/nix.sh" >> /home/nixuser/.bashrc
+# Add nix initialization to shell profile
+RUN echo ". /home/nixuser/.nix-profile/etc/profile.d/nix.sh" >> ~/.bashrc
 
-# Optional: check Nix version at build time
+# Confirm Nix installation
 RUN nix-env --version
 
-# Clean up apk caches
 USER root
 RUN rm -rf /var/cache/apk/*
 
