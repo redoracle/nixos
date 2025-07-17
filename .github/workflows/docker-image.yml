@@ -83,18 +83,17 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/nixos:latest
 
       - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         if: env.create_release == 'true'
-        uses: actions/create-release@v1
         with:
           tag_name: v${{ env.NIX_VERSION }}
-          release_name: NixOS Docker Image v${{ env.NIX_VERSION }}
+          name: NixOS Docker Image v${{ env.NIX_VERSION }}
           draft: false
           prerelease: false
           body: |
             🚀 NixOS Docker image version **${{ env.NIX_VERSION }}** has been built and pushed to:
             - GitHub Container Registry
             - Docker Hub
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
