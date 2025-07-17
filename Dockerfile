@@ -29,9 +29,10 @@ ENV HOME=/home/nixuser USER=nixuser
 # 4. Download installer and run with Bash explicitly
 RUN sh <(curl -L https://nixos.org/nix/install) --no-daemon --yes
 
-# 5. Configure nix.conf to disable sandbox
+# 5. Apply nix configuration nix.conf to disable sandbox and SBF
 RUN mkdir -p /home/nixuser/.config/nix && \
-    echo 'sandbox = false' > /home/nixuser/.config/nix/nix.conf
+    { echo 'sandbox = false'; echo 'filter-syscalls = false'; } \
+    > /home/nixuser/.config/nix/nix.conf
 
 # 6. Initialize profile
 RUN . /home/nixuser/.nix-profile/etc/profile.d/nix.sh && \
