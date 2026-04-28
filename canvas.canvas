@@ -1,0 +1,9 @@
+{
+	"nodes":[
+		{"id":"b82429ad347befac","x":-170,"y":-1006,"width":400,"height":400,"type":"file","file":"requirements-test.md"},
+		{"id":"1990adde89c99984","type":"file","file":"Untitled/Wallpaper.avif","x":-220,"y":-500,"width":400,"height":267,"color":"3"}
+	],
+	"edges":[
+		{"id":"68162186a5a3c847","fromNode":"1990adde89c99984","fromSide":"top","toNode":"b82429ad347befac","toSide":"bottom"}
+	]
+}
