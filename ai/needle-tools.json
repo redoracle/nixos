@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Opt-in Needle router tool catalog for Alpine Nix",
+  "description": "Needle only selects these deliberately constrained functions. Pi's separate built-in bash tool is not subject to this catalog; run Pi only on trusted inputs.",
+  "version": 1,
+  "tools": {
+    "nix_version": {
+      "description": "Get the installed Nix package manager version without executing a user-supplied shell command.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "list_workspace": {
+      "description": "List filenames under a directory located inside /workspace; relative path defaults to '.' and must not escape the workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Relative directory inside /workspace; '.' is the root."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "read_workspace_file": {
+      "description": "Read a UTF-8 text file inside /workspace (up to 16 KiB); do not request secrets.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Relative existing file within /workspace."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "write_workspace_file": {
+      "description": "Create a new UTF-8 text file inside /workspace, only if the user explicitly enabled --execute --allow-write. Existing files are never overwritten.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Relative new file within /workspace."
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 16384,
+            "description": "Exact file contents; never store tokens or credentials."
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "run_safe_check": {
+      "description": "Run one of the built-in read-only diagnostics, never arbitrary shell text.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string",
+            "enum": [
+              "nix-store-verify",
+              "nix-eval-test",
+              "node-version"
+            ],
+            "description": "Named check from this fixed allowlist."
+          }
+        },
+        "required": [
+          "check"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

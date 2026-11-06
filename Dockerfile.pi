@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+# Opt-in Pi + Needle variant; preserve the vanilla Dockerfile and its defaults.
+# Override BASE_IMAGE with the matching tested local or released vanilla image.
+ARG BASE_IMAGE=ghcr.io/redoracle/nixos:v3.0.3
+FROM ${BASE_IMAGE}
+
+LABEL org.opencontainers.image.title="Alpine + Nix + Pi + Needle" \
+      org.opencontainers.image.description="Optional Pi coding agent with local Needle tool routing" \
+      org.opencontainers.image.source="https://github.com/redoracle/nixos" \
+      org.opencontainers.image.licenses="MIT"
+
+USER root
+# Node is provided by Alpine's signed repository; no curl | sh installers.
+RUN apk add --no-cache nodejs npm \
+    && node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && minor < 19)) { throw Error("Pi requires Node >=22.19") }' \
+    && mkdir -p /opt/pi-needle /workspace \
+    && chown nixuser:nixuser /workspace
+
+COPY ai/package.json /opt/pi-needle/package.json
+RUN cd /opt/pi-needle \
+    && npm install --ignore-scripts --omit=dev --no-audit --no-fund \
+    && ln -s /opt/pi-needle/node_modules/.bin/pi /usr/local/bin/pi
+
+COPY ai/needle-cli.mjs ai/needle-policy.mjs ai/needle-tools.json /opt/pi-needle/
+RUN chmod 755 /opt/pi-needle/needle-cli.mjs \
+    && ln -s /opt/pi-needle/needle-cli.mjs /usr/local/bin/needle-cli \
+    && chown -R root:root /opt/pi-needle
+
+USER nixuser
+ENV XDG_CACHE_HOME=/home/nixuser/.cache \
+    NEEDLE_TELEMETRY=0 \
+    DO_NOT_TRACK=1
+WORKDIR /workspace
+
+# Download checksum-verified upstream Needle 3 weights during build.
+# Runtime does not need a model download if this succeeds.
+RUN node /opt/pi-needle/needle-cli.mjs --download
+
+# Pi is the default interactive UI; Needle is an independent local function
+# router, NOT a substitute for Pi's reasoning model/provider.
+CMD ["pi"]

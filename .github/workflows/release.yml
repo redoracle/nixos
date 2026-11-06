@@ -150,3 +150,57 @@ jobs:
           docker buildx imagetools inspect --raw "$GHCR_IMAGE:v$RELEASE_VERSION" |
             jq -e '[.manifests[].platform.architecture] |
                     ((index("amd64") != null) and (index("arm64") != null))'
+
+      - name: Prepare Pi variant tags
+        id: pi_tags
+        if: steps.version.outputs.version != ''
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'tags<<END_TAGS'
+            printf '%s\n' \
+              "${GHCR_IMAGE}-pi:v${RELEASE_VERSION}" \
+              "${GHCR_IMAGE}-pi:${RELEASE_VERSION}" \
+              "${GHCR_IMAGE}-pi:latest"
+            if [[ -n "${DOCKERHUB_USERNAME}" && -n "${DOCKERHUB_TOKEN}" ]]; then
+              printf '%s\n' \
+                "docker.io/${DOCKERHUB_USERNAME}/nixos-pi:v${RELEASE_VERSION}" \
+                "docker.io/${DOCKERHUB_USERNAME}/nixos-pi:${RELEASE_VERSION}" \
+                "docker.io/${DOCKERHUB_USERNAME}/nixos-pi:latest"
+            fi
+            echo 'END_TAGS'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish opt-in Pi + Needle image
+        if: steps.version.outputs.version != ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ./Dockerfile.pi
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository }}:v${{ steps.version.outputs.version }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.pi_tags.outputs.tags }}
+          provenance: true
+          sbom: true
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=alpine-nix-pi-release
+          cache-to: type=gha,mode=max,scope=alpine-nix-pi-release
+
+      - name: Verify opt-in Pi image architectures
+        if: steps.version.outputs.version != ''
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect --raw "${GHCR_IMAGE}-pi:v${RELEASE_VERSION}" |
+            jq -e '[.manifests[].platform.architecture] |
+                    ((index("amd64") != null) and (index("arm64") != null))'

@@ -1,0 +1,15 @@
+{
+  "name": "alpine-nix-pi-needle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Opt-in Alpine Nix Pi coding agent with CPU-local Needle tool router",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.0",
+    "cactus-needle": "0.3.0"
+  }
+}

@@ -58,6 +58,21 @@ To mount a working directory, use a bind mount such as `--mount type=bind,src="$
 
 The Nix store is ephemeral by default. If the container is removed, its store is removed too; persisting it requires explicit storage and ownership planning.
 
+
+## Optional Pi coding agent + offline Needle tool routing
+
+A separate [`Dockerfile.pi`](Dockerfile.pi) builds an **opt-in** Pi + Needle variant from the same vanilla Alpine + Nix image. The existing `Dockerfile` and published vanilla image remain unchanged.
+
+```sh
+docker build -t alpine-nix:local .
+docker build -f Dockerfile.pi --build-arg BASE_IMAGE=alpine-nix:local -t alpine-nix-pi:local .
+docker run --rm -it alpine-nix-pi:local
+```
+
+The Pi image defaults to the `pi` interactive coding agent. A **separate**, local WebAssembly-based Needle 3 tool router is available as `needle-cli`; it prints suggested JSON actions by default, and only executes a small, documented allowlist when `--execute` is supplied. **Needle is not a Pi reasoning/chat model.** The Pi agent still needs a separately configured supported LLM provider or local reasoning endpoint.
+
+Successful versioned releases publish both `ghcr.io/redoracle/nixos:vX.Y.Z` (vanilla) and `ghcr.io/redoracle/nixos-pi:vX.Y.Z` (opt-in), verified on AMD64 and ARM64. See the detailed [Pi + Needle integration and security guide](docs/PI-NEEDLE.md) before using the model or mounting a workspace.
+
 ## Design and security
 
 | Component | Choice | Reason |

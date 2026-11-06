@@ -51,7 +51,9 @@ jobs:
           node --check scripts/check-release-notes.mjs
           node --check scripts/cleanup-branches.mjs
           node scripts/check-release.mjs
-          node --test tests/branch-cleanup.test.mjs
+          node --test tests/branch-cleanup.test.mjs tests/pi-needle.test.mjs
+          node --check ai/needle-policy.mjs
+          node --check ai/needle-cli.mjs
 
   container:
     name: Container ${{ matrix.platform }}
@@ -70,3 +72,10 @@ jobs:
         run: docker buildx build --platform '${{ matrix.platform }}' --load --tag alpine-nix:ci .
       - name: Smoke-test Nix and writable store
         run: docker run --rm -i alpine-nix:ci sh -s < tests/smoke.sh
+      - name: Build opt-in Pi and Needle variant
+        run: |
+          docker buildx build --platform '${{ matrix.platform }}' --load \
+            --file Dockerfile.pi --build-arg BASE_IMAGE=alpine-nix:ci \
+            --tag alpine-nix-pi:ci .
+      - name: Smoke-test Pi and offline Needle inference
+        run: docker run --rm -i alpine-nix-pi:ci sh -s < tests/pi-smoke.sh
