@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, mkdir, writeFile, symlink, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, symlink, readFile, rm, chmod, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateCall, planCall, checkedWorkspacePath, executeAllowed } from '../ai/needle-policy.mjs';
+import { normalizePredictions } from '../ai/needle-predictions.mjs';
 
 const catalog = JSON.parse(await readFile(new URL('../ai/needle-tools.json', import.meta.url), 'utf8'));
 const definitions = Object.entries(catalog.tools);
@@ -131,4 +132,129 @@ test('lexical Needle shortlist keeps relevant tools and never exceeds six choice
     assert.ok(selection.names.includes(expected), `${scope}: ${selection.names.join(', ')}`);
   }
   assert.equal(inferScope('Show my Alpine packages'),'apk');
+});
+
+
+test('should reject aliases to hidden and sensitive files even inside the workspace', async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), 'needle-sensitive-'));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  await writeFile(join(workspace, '.env'), 'API_KEY=should-never-be-read\n');
+  await writeFile(join(workspace, 'safe.txt'), 'safe text');
+  await symlink('.env', join(workspace, 'report.txt'));
+  await symlink('safe.txt', join(workspace, 'alias.txt'));
+
+  for (const name of ['workspace_read', 'workspace_hash']) {
+    const field = name === 'workspace_read' ? 'file' : 'file';
+    await assert.rejects(
+      executeAllowed({ name, arguments: { [field]: 'report.txt' } },
+        { catalog, workspace, execute: true }),
+      { message: /Symlink escapes workspace confinement/ },
+      name
+    );
+    await assert.rejects(
+      executeAllowed({ name, arguments: { [field]: 'alias.txt' } },
+        { catalog, workspace, execute: true }),
+      { message: /Symlink escapes workspace confinement/ },
+      name
+    );
+  }
+  // A benign regular file must remain accessible despite the deny-by-default rule.
+  const result = await executeAllowed({
+    name: 'workspace_read', arguments: { file: 'safe.txt' },
+  }, { catalog, workspace, execute: true });
+  assert.deepEqual(result, {
+    name: 'workspace_read', mode: 'readonly',
+    executed: true, ok: true, text: 'safe text',
+  });
+});
+
+test('should reject sensitive directories and oversized workspace inputs', async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), 'needle-bounds-'));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  await mkdir(join(workspace, '.private'));
+  await writeFile(join(workspace, '.private', 'data.txt'), 'sensitive');
+  await writeFile(join(workspace, 'large.txt'), 'x'.repeat(16385));
+  await assert.rejects(
+    executeAllowed({ name: 'workspace_read',
+      arguments: { file: '.private/data.txt' } },
+    { catalog, workspace, execute: true }),
+    /Sensitive or hidden file/
+  );
+  await assert.rejects(
+    executeAllowed({ name: 'workspace_read',
+      arguments: { file: 'large.txt' } },
+    { catalog, workspace, execute: true }),
+    /exceeds 16384-byte limit/
+  );
+});
+
+test('should ignore a malicious executable shadowing a system command on PATH', async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), 'needle-path-'));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const fake = join(workspace, 'id');
+  const marker = join(workspace, 'command-hijacked');
+  await writeFile(fake, '#!/bin/sh\ntouch "' + marker + '"\necho hijacked\n');
+  await chmod(fake, 0o755);
+
+  const previous = process.env.PATH;
+  try {
+    process.env.PATH = workspace + ':' + previous;
+    const result = await executeAllowed({
+      name: 'system_identity', arguments: {},
+    }, { catalog, workspace, execute: true });
+    assert.equal(result.ok, true, result.stderr);
+    assert.match(result.stdout, /\buid=/);
+    assert.doesNotMatch(result.stdout, /hijacked/);
+    await assert.rejects(access(marker), { code: 'ENOENT' });
+  } finally {
+    process.env.PATH = previous;
+  }
+});
+
+test('should reject predictions for tools outside the request-specific shortlist', () => {
+  const offered = new Set(['nix_version', 'nix_config']);
+  assert.deepEqual(
+    normalizePredictions({
+      toolCalls: [{ toolName: 'nix_version', input: {} }],
+    }, catalog, offered),
+    [{ name: 'nix_version', arguments: {} }]
+  );
+  assert.throws(() => normalizePredictions({
+    toolCalls: [{ toolName: 'workspace_create',
+      input: { path: 'unsafe.txt', content: 'wrong scope' } }],
+  }, catalog, offered), {
+    name: 'Error',
+    message: 'Tool not offered for this request: workspace_create',
+  });
+  assert.throws(() => normalizePredictions({
+    toolCalls: [{ toolName: 'unsupported', input: {} }],
+  }, catalog, offered), /Unknown Needle action/);
+  assert.throws(() => normalizePredictions({
+    toolCalls: Array.from({ length: 9 },
+      () => ({ toolName: 'nix_version', input: {} })),
+  }, catalog, offered), /per-turn tool-call limit/);
+  assert.throws(() => normalizePredictions({
+    toolCalls: { toolName: 'nix_version', input: {} },
+  }, catalog, offered), /invalid function calls/);
+  assert.throws(() => normalizePredictions({
+    toolCalls: [{ toolName: 'nix_version', input: { unexpected: true } }],
+  }, catalog, offered), /Unexpected argument/);
+  assert.throws(() => normalizePredictions({
+    toolCalls: [{ toolName: 'nix_version', input: '{' }],
+  }, catalog, offered), /not JSON/);
+  assert.throws(() => normalizePredictions({ toolCalls: [] }, catalog),
+    /offered-tool set is required/);
+});
+
+test('should preserve the manual-only prohibition regardless of model tool choice', async () => {
+  const offered = new Set(['apk_install_plan']);
+  const [call] = normalizePredictions({
+    toolCalls: [{ toolName: 'apk_install_plan', input: { package: 'curl' } }],
+  }, catalog, offered);
+  const result = await executeAllowed(call, {
+    catalog, execute: true, allowWrite: true,
+  });
+  assert.equal(result.executed, false);
+  assert.equal(result.mode, 'manual');
+  assert.deepEqual(result.argv, ['apk', 'add', '--no-cache', 'curl']);
 });

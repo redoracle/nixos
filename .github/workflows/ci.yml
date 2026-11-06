@@ -55,6 +55,7 @@ jobs:
           node --check ai/needle-policy.mjs
           node --check ai/needle-cli.mjs
           node --check ai/needle-engine.mjs
+          node --check ai/needle-predictions.mjs
           node --check ai/needle-selection.mjs
           node --check ai/needle-pi-extension.js
 

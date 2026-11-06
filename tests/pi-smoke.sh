@@ -45,7 +45,16 @@ node -e '
 const fs = require("node:fs");
 const item = JSON.parse(fs.readFileSync("/tmp/needle-inference.json", "utf8"));
 if (item.executed !== false || item.scope !== "nix" ||
-    !Array.isArray(item.function_calls)) process.exit(1);
+    !Array.isArray(item.function_calls) || item.function_calls.length === 0) {
+  console.error("Needle did not propose any tool for the required Nix version request:", raw);
+  process.exit(1);
+}
+for (const call of item.function_calls) {
+  if (!item.selectedTools.includes(call.name)) {
+    console.error("Needle returned a tool outside the offered scope:", call.name);
+    process.exit(1);
+  }
+}
 console.log("Needle model returned offline proposals without execution");
 '
 rm -f /tmp/needle-inference.json

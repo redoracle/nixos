@@ -1,8 +1,9 @@
-import { lstat, realpath, readdir, readFile, open } from 'node:fs/promises';
+import { lstat, stat, realpath, readdir, open } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
-import { resolve, dirname, relative, isAbsolute, basename } from 'node:path';
+import { resolve, dirname, relative, isAbsolute, join, sep } from 'node:path';
 
 const execFile = promisify(execFileCallback);
 const MAX_OUTPUT = 65536;
@@ -99,6 +100,26 @@ function isInside(root, path) {
 }
 
 const DENY_NAMES = /(^\.|^id_rsa|\.key$|\.pem$|secret|token|password|credential|private|api[-_]?key|\.env)/i;
+
+function rejectSensitiveParts(root, target) {
+  const parts = relative(root, target).split(sep);
+  if (parts.some((part) => DENY_NAMES.test(part))) {
+    throw new Error('Sensitive or hidden file names are not readable/writable through Needle');
+  }
+}
+
+// Disallow ALL symlink components, including benign in-workspace aliases.
+// This avoids bypassing name checks with a symlink to /workspace/.env.
+// It also keeps path resolution predictable for untrusted mounted workspaces.
+async function rejectSymlinkComponents(root, target) {
+  let cursor = root;
+  for (const segment of relative(root, target).split(sep).filter(Boolean)) {
+    cursor = join(cursor, segment);
+    const metadata = await lstat(cursor);
+    if (metadata.isSymbolicLink()) throw new Error('Symlink escapes workspace confinement');
+  }
+}
+
 export async function checkedWorkspacePath(root, input, { create = false, file = false } = {}) {
   if (typeof input !== 'string' || !input || input.includes('\0') || isAbsolute(input)) {
     throw new Error('A nonempty relative workspace path is required');
@@ -106,20 +127,27 @@ export async function checkedWorkspacePath(root, input, { create = false, file =
   const realRoot = await realpath(root);
   const candidate = resolve(realRoot, input);
   if (!isInside(realRoot, candidate)) throw new Error('Path escapes workspace');
-  if (file || create) {
-    for (const segment of relative(realRoot, candidate).split('/')) {
-      if (DENY_NAMES.test(segment)) throw new Error('Sensitive or hidden file names are not readable/writable through Needle');
-    }
-  }
-  if (create) {
-    const parent = await realpath(dirname(candidate));
-    if (!isInside(realRoot, parent)) throw new Error('Parent symlink escapes workspace');
-    // open(..., "wx") is atomic for final-component non-overwrite.
-    return candidate;
-  }
+  if (file || create) rejectSensitiveParts(realRoot, candidate);
+
+  // For creation the final pathname must not exist; the parent must exist
+  // and contain no symlinks. O_EXCL below enforces atomic no-overwrite.
+  await rejectSymlinkComponents(realRoot, create ? dirname(candidate) : candidate);
+  if (create) return candidate;
+
   const resolved = await realpath(candidate);
   if (!isInside(realRoot, resolved)) throw new Error('Symlink escapes workspace');
+  if (file) rejectSensitiveParts(realRoot, resolved);
   return resolved;
+}
+
+// Validate the *opened descriptor*, not just the pathname checked earlier.
+// /proc/self/fd is available in the Linux image; fail closed without it.
+async function assertOpenedWorkspaceFile(handle, workspace) {
+  const root = await realpath(workspace);
+  const actual = await realpath(`/proc/self/fd/${handle.fd}`);
+  if (!isInside(root, actual)) throw new Error('Opened file escapes workspace');
+  rejectSensitiveParts(root, actual);
+  return actual;
 }
 
 function commandPreview(entry, args) {
@@ -141,12 +169,40 @@ export function planCall(call, catalog) {
   };
 }
 
+const TRUSTED_BIN_DIRS = Object.freeze(['/usr/bin', '/bin', '/usr/sbin', '/sbin']);
+
+async function trustedExecutable(name) {
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+    throw new Error('Invalid executable name');
+  }
+  for (const dir of TRUSTED_BIN_DIRS) {
+    let target;
+    try {
+      target = await realpath(join(dir, name));
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (!TRUSTED_BIN_DIRS.some((root) => isInside(root, target))) {
+      throw new Error('Executable resolves outside system-owned directories');
+    }
+    const info = await stat(target);
+    if (!info.isFile() || info.uid !== 0 ||
+        (info.mode & 0o022) !== 0 || (info.mode & 0o111) === 0) {
+      throw new Error('Executable is not a trusted root-owned binary');
+    }
+    return target;
+  }
+  throw new Error(`Approved executable not found: ${name}`);
+}
+
 async function runCommand(name, entry, args, { workspace }) {
   const signature = SAFE[name];
   if (!signature || JSON.stringify(entry.commandPreview) !== JSON.stringify(signature)) {
     throw new Error(`Denied: command signature for ${name} is not in the reviewed allowlist`);
   }
   const [bin, ...argv] = commandPreview(entry, args);
+  const executable = await trustedExecutable(bin);
   if (args.store_path) {
     // Do not query arbitrary absent paths or unusual symlinks inside the store.
     const realStorePath = await realpath(args.store_path);
@@ -155,13 +211,13 @@ async function runCommand(name, entry, args, { workspace }) {
   const opts = {
     cwd: workspace, timeout: 30000, maxBuffer: 256 * 1024,
     env: {
-      PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+      PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
       HOME: process.env.HOME ?? '/home/nixuser',
       USER: process.env.USER ?? 'nixuser',
     },
   };
   try {
-    const { stdout, stderr } = await execFile(bin, argv, opts);
+    const { stdout, stderr } = await execFile(executable, argv, opts);
     return { ok: true, exitCode: 0,
       stdout: stdout.slice(0, MAX_OUTPUT),
       stderr: stderr.slice(0, MAX_OUTPUT) };
@@ -179,10 +235,18 @@ async function runCommand(name, entry, args, { workspace }) {
 
 async function getSafeFile(workspace, value, { limit }) {
   const file = await checkedWorkspacePath(workspace, value, { file: true });
-  const meta = await lstat(file);
-  if (!meta.isFile()) throw new Error('Only regular workspace files can be read or hashed');
-  if (meta.size > limit) throw new Error(`File exceeds ${limit}-byte limit`);
-  return { file, meta };
+  const flags = fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+  const handle = await open(file, flags);
+  try {
+    await assertOpenedWorkspaceFile(handle, workspace);
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) throw new Error('Only regular workspace files can be read or hashed');
+    if (metadata.size > limit) throw new Error(`File exceeds ${limit}-byte limit`);
+    return handle;
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
 }
 
 async function executeWorkspace(name, args, { workspace, allowWrite }) {
@@ -194,25 +258,40 @@ async function executeWorkspace(name, args, { workspace, allowWrite }) {
     })), truncated: entries.length > MAX_FILES };
   }
   if (name === 'workspace_stat') {
-    const path = await checkedWorkspacePath(workspace, args.path);
+    const path = await checkedWorkspacePath(workspace, args.path, { file: true });
     const meta = await lstat(path);
     return { ok: true, kind: meta.isFile() ? 'file' : meta.isDirectory() ? 'directory' : 'other',
       bytes: meta.size, mode: (meta.mode & 0o777).toString(8) };
   }
   if (name === 'workspace_read') {
-    const { file } = await getSafeFile(workspace, args.file, { limit: MAX_READ });
-    return { ok: true, text: await readFile(file, 'utf8') };
+    const handle = await getSafeFile(workspace, args.file, { limit: MAX_READ });
+    try {
+      return { ok: true, text: await handle.readFile('utf8') };
+    } finally {
+      await handle.close();
+    }
   }
   if (name === 'workspace_hash') {
-    const { file } = await getSafeFile(workspace, args.file, { limit: MAX_HASH });
-    const digest = createHash('sha256').update(await readFile(file)).digest('hex');
-    return { ok: true, sha256: digest };
+    const handle = await getSafeFile(workspace, args.file, { limit: MAX_HASH });
+    try {
+      const digest = createHash('sha256').update(await handle.readFile()).digest('hex');
+      return { ok: true, sha256: digest };
+    } finally {
+      await handle.close();
+    }
   }
   if (name === 'workspace_create') {
     if (!allowWrite) throw new Error('File creation requires --execute and --allow-write');
     const path = await checkedWorkspacePath(workspace, args.path, { create: true });
-    const handle = await open(path, 'wx', 0o600);
-    try { await handle.writeFile(args.content, 'utf8'); } finally { await handle.close(); }
+    const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT |
+      fsConstants.O_EXCL | fsConstants.O_NOFOLLOW;
+    const handle = await open(path, flags, 0o600);
+    try {
+      await assertOpenedWorkspaceFile(handle, workspace);
+      await handle.writeFile(args.content, 'utf8');
+    } finally {
+      await handle.close();
+    }
     return { ok: true, created: args.path, bytes: Buffer.byteLength(args.content, 'utf8') };
   }
   throw new Error('Workspace action is not implemented');

@@ -1,5 +1,6 @@
 import { Needle, tool } from 'cactus-needle';
-import { validateCall, planCall } from './needle-policy.mjs';
+import { planCall } from './needle-policy.mjs';
+import { normalizePredictions } from './needle-predictions.mjs';
 
 import { SCOPES, selectTools } from './needle-selection.mjs';
 export { SCOPES };
@@ -15,19 +16,6 @@ export function toolDefinitions(catalog, names) {
   return result;
 }
 
-export function normalizePredictions(output, catalog) {
-  const predictions = output.toolCalls ?? output.function_calls ?? [];
-  if (!Array.isArray(predictions)) throw new Error('Needle returned invalid function calls');
-  if (predictions.length > 8) throw new Error('Needle output exceeded the per-turn tool-call limit');
-  return predictions.map((raw) => {
-    const call = validateCall({
-      name: raw.toolName ?? raw.name ?? raw.function?.name,
-      arguments: raw.input ?? raw.arguments ?? raw.function?.arguments ?? {},
-    }, catalog);
-    return call;
-  });
-}
-
 export async function routeNeedle(prompt, { catalog, scope = 'auto' } = {}) {
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 1024) {
     throw new Error('Natural-language request must be 1–1024 characters');
@@ -41,7 +29,7 @@ export async function routeNeedle(prompt, { catalog, scope = 'auto' } = {}) {
   });
   try {
     const output = await needle.generate({ prompt, maxOutputTokens: 512 });
-    const calls = normalizePredictions(output, catalog);
+    const calls = normalizePredictions(output, catalog, new Set(selection.names));
     return {
       prompt, scope: selection.scope, selectedTools: selection.names, executed: false,
       function_calls: calls, plans: calls.map(call => planCall(call, catalog)),

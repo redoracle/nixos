@@ -1,23 +1,28 @@
 // Piped into the Pi+Needle image's Node.js runtime by CI, on AMD64 and ARM64.
 // It performs every catalog entry without relying on stochastic model selection.
 import assert from 'node:assert/strict';
-import { readFile, writeFile, unlink } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { execFile as callbackExecFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { executeAllowed, planCall, validateCall } from '/opt/pi-needle/needle-policy.mjs';
 
 const execFile = promisify(callbackExecFile);
 const catalog = JSON.parse(await readFile('/opt/pi-needle/needle-tools.json','utf8'));
-const workspace = '/workspace';
-const fixture = workspace+'/catalog-test.txt';
-const createTarget = workspace+'/catalog-created.txt';
-const storeFixture = '/tmp/needle-catalog-store-input.txt';
+// Use disposable directories so retries and concurrent jobs cannot collide.
+const workspace = await mkdtemp('/workspace/needle-catalog-');
+const storeInput = await mkdtemp(join(tmpdir(), 'needle-catalog-source-'));
+const fixture = join(workspace, 'catalog-test.txt');
+const createTarget = join(workspace, 'catalog-created.txt');
+const storeFixture = join(storeInput, 'needle-catalog-store-input.txt');
+const fixtureText = 'Needle inspection fixture\n';
 
-assert.equal(process.getuid(),10001, 'The Pi image must stay non-root');
-assert.equal(Object.keys(catalog.tools).length,60);
-
-await writeFile(fixture,'Needle inspection fixture\n',{flag:'wx',mode:0o600});
-await writeFile(storeFixture,'Nix store example\n',{flag:'wx',mode:0o600});
+assert.equal(process.getuid(), 10001, 'Pi image must be unprivileged');
+assert.equal(Object.keys(catalog.tools).length, 60);
+await writeFile(fixture, fixtureText, { flag: 'wx', mode: 0o600 });
+await writeFile(storeFixture, 'Nix store example\n', { flag: 'wx', mode: 0o600 });
 let storePath = '';
 try {
   const { stdout } = await execFile('nix-store',['--add',storeFixture],{timeout:30000});
@@ -47,14 +52,25 @@ try {
     } else {
       result = await executeAllowed(call,{catalog,workspace,execute:true});
       assert.equal(result.executed,true,name);
-      if (!result.ok) {
-        // The image starts without a user-installed Nix profile; the command
-        // must still be attempted and return a truthful failure.
-        if (name === 'nix_profile_list') {
-          console.log(`ENVIRONMENT-DEPENDENT ${name}: ${result.stderr.slice(0,140)}`);
-        } else {
-          throw new Error(`${name} failed (exit ${result.exitCode}): ${result.stderr.slice(0,220)}`);
-        }
+      assert.equal(result.ok, true,
+        `${name} failed (exit ${result.exitCode}): ${String(result.stderr).slice(0, 220)}`);
+      assert.equal(result.mode, 'readonly', name);
+      if (name === 'system_identity') assert.match(result.stdout, /uid=10001/);
+      if (name === 'nix_version') assert.match(result.stdout, /^nix [(]Nix[)] [0-9]+[.][0-9]+/);
+      if (name === 'nix_eval_selftest') assert.equal(result.stdout.trim(), '2');
+      if (name === 'apk_installed') assert.match(result.stdout, /nix/);
+      if (name === 'workspace_read') assert.equal(result.text, fixtureText);
+      if (name === 'workspace_list') {
+        assert.ok(result.entries.some((e) => e.name === 'catalog-test.txt'));
+      }
+      if (name === 'workspace_hash') {
+        assert.equal(result.sha256, createHash('sha256').update(fixtureText).digest('hex'));
+      }
+      if (name === 'workflow_nix_health') {
+        assert.deepEqual(result.stages.map((stage) => stage.name),
+          ['nix_eval_selftest', 'nix_store_verify']);
+        assert.ok(result.stages.every((stage) => stage.result.ok));
+        assert.equal(result.stages[0].result.stdout.trim(), '2');
       }
       readOnly++;
     }
@@ -62,8 +78,11 @@ try {
     tested++;
   }
   assert.equal(tested,60);
-  assert.ok(readOnly >= 30 && manual >= 15 && writes === 1);
+  assert.deepEqual({ readOnly, manual, writes }, { readOnly: 41, manual: 18, writes: 1 });
   console.log(JSON.stringify({tested,readOnly,manual,writes,storePath,architecture:process.arch}));
 } finally {
-  await Promise.allSettled([unlink(fixture),unlink(createTarget),unlink(storeFixture)]);
+  await Promise.all([
+    rm(workspace, { recursive: true, force: true }),
+    rm(storeInput, { recursive: true, force: true }),
+  ]);
 }
