@@ -22,7 +22,14 @@ import extension from '/opt/pi-needle/needle-pi-extension.js';
 const settings = JSON.parse(await readFile('/home/nixuser/.pi/agent/settings.json','utf8'));
 assert.ok(settings.extensions.includes('/opt/pi-needle/needle-pi-extension.js'));
 const registered = [];
-extension({ registerTool: entry => registered.push(entry) });
+const commands = [];
+extension({
+  registerTool: entry => registered.push(entry),
+  registerCommand: (name, config) => commands.push({ name, config }),
+});
+assert.equal(commands.length, 1);
+assert.equal(commands[0].name, 'needle-health');
+assert.equal(typeof commands[0].config.handler, 'function');
 assert.equal(registered.length, 1);
 assert.equal(registered[0].name, 'needle_route');
 assert.equal(typeof registered[0].execute, 'function');

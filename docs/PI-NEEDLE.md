@@ -37,6 +37,8 @@ The image builds and caches the Needle weights **at build time** as `nixuser`. A
 
 The optional image configures `~/.pi/agent/settings.json` to load the local [`needle-pi-extension.js`](../ai/needle-pi-extension.js), registering the **`needle_route`** Pi tool.
 
+The extension also registers a no-model-required `/needle-health` command. CI launches the **real Pi RPC process**, verifies that this command is discoverable, and invokes it without an LLM provider.
+
 When Pi has a reasoning provider, you can ask:
 
 > Use needle_route to inspect the Alpine packages installed in this container, then explain what you found.
@@ -127,6 +129,28 @@ docker run --rm alpine-nix-pi:local needle-cli \
 ```
 
 The output is a **plan**, not a performed garbage collection. Review it and run any selected commands yourself in a trusted context.
+
+
+### Measurable routing quality
+
+The 35 documented prompts now run as **70 deterministic CI assertions**: the expected tool must be present in the six-tool shortlist for both an explicit group and the default automatic scope. This evaluates **tool availability**, not model-level correctness. The lexical selector is deterministic; the local Needle model remains probabilistic.
+
+To measure actual model selection without executing commands, run the opt-in benchmark inside the built image:
+
+```sh
+docker run --rm alpine-nix-pi:local \
+  node /opt/pi-needle/needle-benchmark.mjs --limit=5 --mode=auto
+
+# Full suite (can be slow on CPU or ARM emulation):
+docker run --rm alpine-nix-pi:local \
+  node /opt/pi-needle/needle-benchmark.mjs --limit=35 --mode=explicit
+
+# Opt-in enforceable threshold for controlled release benchmarking:
+docker run --rm alpine-nix-pi:local \
+  node /opt/pi-needle/needle-benchmark.mjs --limit=35 --min-accuracy=0.95
+```
+
+The JSON report distinguishes **offered-tool recall**, **actual selected-tool accuracy**, **empty responses**, and inference errors. No catalog tool is executed. CI deliberately does not impose a 95% model-accuracy requirement without an independently established hardware/model baseline.
 
 ## Tested use cases and boundaries
 

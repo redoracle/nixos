@@ -7,6 +7,15 @@ import { routeNeedle } from './needle-engine.mjs';
 
 const catalog = JSON.parse(await readFile(new URL('./needle-tools.json', import.meta.url), 'utf8'));
 export default function registerNeedle(pi) {
+  // Also expose a no-model-required health command. The real Pi RPC startup
+  // test asserts this command is discoverable, proving extension loading.
+  pi.registerCommand('needle-health', {
+    description: 'Show the offline Needle tool catalog health without an LLM',
+    handler: async (_args, ctx) => {
+      const total = Object.keys(catalog.tools).length;
+      ctx.ui.notify('Needle available: ' + total + ' catalog actions, proposal-only Pi tool', 'info');
+    },
+  });
   pi.registerTool({
     name: 'needle_route',
     label: 'Needle Nix/Alpine plan',
