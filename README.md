@@ -97,6 +97,6 @@ The smoke test checks non-root execution, evaluates a Nix expression, adds a fil
 
 ## Security and contributions
 
-Read [SECURITY.md](SECURITY.md) before deploying images, [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for participation standards. The [architecture guide](docs/ARCHITECTURE.md) and [release handbook](docs/RELEASING.md) document design, trust boundaries, and publishing. Use structured [GitHub Issues](https://github.com/redoracle/nixos/issues) for reports and requests. See the [Nix manual](https://nixos.org/manual/nix/stable/) and [Alpine documentation](https://wiki.alpinelinux.org/) for upstream details.
+Read [SECURITY.md](SECURITY.md) before deploying images, [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes, [SUPPORT.md](SUPPORT.md) for help, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for participation standards. The [architecture guide](docs/ARCHITECTURE.md) and [release handbook](docs/RELEASING.md) document design, trust boundaries, and publishing. Use structured [GitHub Issues](https://github.com/redoracle/nixos/issues) for reports and requests. See the [Nix manual](https://nixos.org/manual/nix/stable/) and [Alpine documentation](https://wiki.alpinelinux.org/) for upstream details.
 
 Licensed under the [MIT License](LICENSE).
