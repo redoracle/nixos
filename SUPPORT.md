@@ -1,15 +1,22 @@
 # Support
 
-## Where to get help
+The project is a community-maintained Alpine + Nix container, not a commercial NixOS distribution. There are no guaranteed response times or production support SLAs.
 
-- Review the [README](README.md) for supported platforms, installation, and usage.
-- Consult the [architecture guide](docs/ARCHITECTURE.md) for the container trust model and the [release handbook](docs/RELEASING.md) for publishing and monthly dependency maintenance.
-- For reproducible bugs, use the [bug report template](https://github.com/redoracle/nixos/issues/new/choose). Include the image version or commit, platform, Docker version, sanitized logs, and steps to reproduce.
-- For improvements, use the feature request template in GitHub Issues.
-- For sensitive vulnerabilities, follow [SECURITY.md](SECURITY.md) and **do not** post exploit details in a public issue.
+## Before filing an issue
 
-## Support expectations
+1. Read the [README](README.md) and [architecture decisions](docs/ARCHITECTURE.md) to confirm your use case is supported.
+2. Check the [latest GitHub Release](https://github.com/redoracle/nixos/releases/latest), supported `linux/amd64` and `linux/arm64` architectures, and the [CI history](https://github.com/redoracle/nixos/actions/workflows/ci.yml).
+3. Reproduce the problem with a versioned image or a specific commit and gather **sanitized** output from `nix --version`, `docker version`, and the relevant command.
+4. Open a [bug or feature request](https://github.com/redoracle/nixos/issues/new/choose). Provide a minimal reproduction and expected/actual results.
 
-This is a community-maintained open-source project, without guaranteed response times, commercial support, or production SLAs. Release and maintenance workflows are documented so contributors can propose fixes with reproducible evidence.
+For Alpine packaging and OpenRC questions, consult [Alpine documentation](https://docs.alpinelinux.org/). For Nix derivations, flakes or store behavior, consult the [Nix manual](https://nixos.org/manual/nix/stable/). An issue specific to those projects may belong upstream.
 
-For upstream Nix and Alpine issues, consult the [Nix documentation](https://nixos.org/manual/nix/stable/) and [Alpine Linux documentation](https://docs.alpinelinux.org/) before reporting a project-specific problem.
+**Security-sensitive details must not be posted publicly.** Follow [SECURITY.md](SECURITY.md) for private disclosure options.
+
+## Maintainer resources
+
+- [Release and maintenance runbook](docs/RELEASING.md): SemVer, registries, upgrades, recovery, branch hygiene
+- [Contributing](CONTRIBUTING.md): test requirements, PR expectations and dependency compatibility
+- [Code of Conduct](CODE_OF_CONDUCT.md): participation guidelines
+
+The repository's automated checks and release history are the canonical record of what has actually been verified and published.

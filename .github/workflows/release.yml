@@ -51,8 +51,10 @@ jobs:
       - name: Install pinned release tooling
         run: npm install --ignore-scripts --no-audit --no-fund
 
-      - name: Validate semantic release setup
-        run: npm run test:release
+      - name: Validate semantic release setup and release notes
+        run: |
+          npm run test:release
+          npm run test:release-notes
 
       - name: Compute and create GitHub release
         env:

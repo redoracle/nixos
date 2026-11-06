@@ -1,25 +1,34 @@
-## Summary
+## Purpose and change summary
 
-<!-- Explain what changes and why. Link related issues. -->
+<!-- Explain the user need, implementation approach and issue reference. -->
 
-## Change type and release impact
+## SemVer and compatibility
 
-- [ ] fix (patch)
-- [ ] feat (minor)
-- [ ] BREAKING CHANGE / feat! (major)
-- [ ] documentation / CI / maintenance only (no release by default)
+- [ ] `fix:` / `fix(deps):` — patch
+- [ ] `feat:` — backward-compatible feature
+- [ ] `feat!:` plus `BREAKING CHANGE:` footer — major
+- [ ] `docs:` / `chore:` / `test:` — no release by default
 
-<!-- Use Conventional Commits in your PR title. Squash merges should preserve the intended release semantics. -->
+<!-- Use a Conventional Commit PR title; preserve its release semantics when squash-merging. -->
 
-## Verification
+## Verification evidence
 
-- [ ] Shell syntax, ShellCheck and installer tests pass
-- [ ] Release config test passes (if release files changed)
-- [ ] amd64 image builds and smoke test pass
-- [ ] arm64 image builds and smoke test pass
-- [ ] Documentation and threat model updated where necessary
+- [ ] POSIX shell syntax, ShellCheck, and installer contract tests
+- [ ] Release configuration and actual release-notes generation tests (if tooling changed)
+- [ ] GitHub Actions Actionlint validation
+- [ ] Branch cleanup eligibility tests (if housekeeping changed)
+- [ ] Docker image build and store smoke test on AMD64
+- [ ] Docker image build and store smoke test on ARM64
+- [ ] Documentation and security implications reviewed
 
-## Risk, rollback and deployment
+## Security, migration and rollback
 
-<!-- Describe security impact, changed Nix/Alpine dependencies, and any rollback/migration instructions. -->
-<!-- Do not include passwords, tokens, or sensitive vulnerability details. -->
+<!-- Identify changes to privileges, network access, Nix sandboxing, mutable dependencies,
+     published tags, secrets or branch deletion. Describe migration/rollback steps. -->
+
+## Dependency changes (if applicable)
+
+<!-- Link upstream release notes. Verify SHA pins and runtime compatibility.
+     Never merge incompatible major updates solely because installation succeeds. -->
+
+<!-- Never paste real secrets, private vulnerability reports or unredacted logs. -->

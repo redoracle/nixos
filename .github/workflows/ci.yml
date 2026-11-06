@@ -42,11 +42,16 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Verify release dependency compatibility
         run: npm ls --depth=0
-      - name: Validate release configuration and scripts
+      - name: Verify release-notes generation and compatibility
+        run: npm run test:release-notes
+      - name: Validate maintenance and release scripts
         run: |
           node --check scripts/prepare-release.mjs
           node --check scripts/check-release.mjs
+          node --check scripts/check-release-notes.mjs
+          node --check scripts/cleanup-branches.mjs
           node scripts/check-release.mjs
+          node --test tests/branch-cleanup.test.mjs
 
   container:
     name: Container ${{ matrix.platform }}

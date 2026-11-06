@@ -27,3 +27,8 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "fix(deps)"
+    # semantic-release's release-notes-generator currently uses an older writer.
+    # Keep the last compatible preset major until an end-to-end notes test passes.
+    ignore:
+      - dependency-name: conventional-changelog-conventionalcommits
+        update-types: ["version-update:semver-major"]

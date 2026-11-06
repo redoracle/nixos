@@ -1,20 +1,22 @@
-# Alpine Linux + Nix
+# Alpine + Nix
 
 [![CI](https://github.com/redoracle/nixos/actions/workflows/ci.yml/badge.svg)](https://github.com/redoracle/nixos/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/redoracle/nixos?display_name=tag)](https://github.com/redoracle/nixos/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release workflow](https://github.com/redoracle/nixos/actions/workflows/release.yml/badge.svg)](https://github.com/redoracle/nixos/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/redoracle/nixos)](https://github.com/redoracle/nixos/releases/latest)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A small, non-root Alpine Linux container with the **Nix package manager** installed from Alpine's signed package repositories. This project is **not NixOS**: NixOS is a separate operating system with a declarative system configuration. This image runs Alpine with Nix available for development and experimentation.
+**A small Alpine Linux container with the Nix package manager.** Packages come from Alpine's signed repositories, the container runs without root privileges, and GitHub Actions validates both AMD64 and ARM64 images before publishing release artifacts.
 
-## Quick start
+> [!IMPORTANT]
+> This is **Alpine Linux with Nix**, **not NixOS**. It does not provide NixOS modules, declarative operating-system configuration, or systemd. The container intentionally disables *Nix's internal build sandbox* because typical container runtimes do not expose the namespace capabilities it requires. Run **trusted Nix expressions and derivations only**.
 
-Requirements: Docker with BuildKit, or an equivalent recent container engine.
+## Start with a published image
 
-```sh
-git clone https://github.com/redoracle/nixos.git
-cd nixos
-docker build --tag alpine-nix:local .
-docker run --rm -it alpine-nix:local
+Choose the [latest verified release](https://github.com/redoracle/nixos/releases/latest). For the mutable convenience tag:
+
+```bash
+docker pull ghcr.io/redoracle/nixos:latest
+docker run --rm -it ghcr.io/redoracle/nixos:latest
 ```
 
 Inside the container:
@@ -22,24 +24,80 @@ Inside the container:
 ```sh
 nix --version
 nix-instantiate --eval --expr '1 + 1'
+nix-store --verify
+```
+
+For a production deployment, **use a release-specific tag** such as `ghcr.io/redoracle/nixos:v3.0.2` or an immutable `@sha256:…` image digest. The `latest` tag moves after each successful semantic release.
+
+Optional Docker Hub mirrors are published as `docker.io/<configured-username>/nixos` if registry credentials are configured; the actual namespace depends on the repository's Docker Hub secret. GHCR is the primary publishing destination.
+
+## Build locally
+
+Requirements: Docker with BuildKit and, for ARM64 builds on x86 runners, an appropriate QEMU/Buildx environment.
+
+```bash
+git clone https://github.com/redoracle/nixos.git
+cd nixos
+docker build -t alpine-nix:local .
+docker run --rm -it alpine-nix:local
+```
+
+The Dockerfile currently uses Alpine `3.24.4` and Alpine's packaged `nix`. The final process runs as `nixuser` (UID/GID `10001`). The writable Nix store is initialized within `/nix`; no passwordless sudo, Docker daemon socket, or privileged container is required.
+
+### Working with Nix
+
+The built-in evaluation and store checks operate without downloading Nixpkgs. To fetch a package from the upstream flake registry:
+
+```sh
 nix shell nixpkgs#hello
 ```
 
-The first two commands work offline. `nix shell` requires network access and downloads Nixpkgs on first use. To mount a working directory, add `-v "$PWD:/workspace" -w /workspace` to `docker run`. Treat the mounted directory as writable by container UID **10001** (or adjust host ownership/permissions as appropriate).
+This command requires network access. Nixpkgs and package dependencies may be large and are subject to upstream availability. For your own application, commit a flake lock file to pin external inputs. See the [Nix reference manual](https://nixos.org/manual/nix/stable/) for exact command semantics.
 
-## Architecture and supported platforms
+To mount a working directory, use a bind mount such as `--mount type=bind,src="$PWD",dst=/workspace -w /workspace`. Ensure that UID 10001 can write the files it needs. Avoid mounting secrets, host sockets, or stores shared with untrusted workloads.
 
-- **Base:** Alpine Linux `3.24.4` (stable branch), rather than an unpredictable `latest` tag.
-- **Nix:** Alpine's `community` repository package; the version is determined by the selected stable Alpine repositories, not by scraping release pages or fetching a shell script.
-- **Security model:** the unprivileged `nixuser` (UID/GID 10001) owns a **single-user** Nix store at `/nix`. No Docker socket, root password, privileged container, or passwordless sudo is required.
-- **Isolation:** Nix sandboxing is disabled **inside the container** because ordinary container environments lack the user namespaces required by Nix's sandbox. This weakens build isolation and reproducibility. Never execute untrusted derivations in this image. Keep the container itself unprivileged and apply your own runtime restrictions.
-- **Platforms:** CI attempts image builds and store smoke tests on `linux/amd64` and `linux/arm64`.
+The Nix store is ephemeral by default. If the container is removed, its store is removed too; persisting it requires explicit storage and ownership planning.
 
-The Nix store lives inside the container by default and is lost when the container is removed. Persist it only if you understand ownership, compatibility, and trust implications of sharing a store between containers.
+## Design and security
 
-## Manual installation on Alpine hosts
+| Component | Choice | Reason |
+| --- | --- | --- |
+| Base image | Alpine stable patch release | Predictable distro line; security fixes via reviewed rebuilds |
+| Package installation | `apk add --no-cache` | Alpine-maintained package and repository signature verification |
+| Default user | `nixuser`, UID 10001 | Avoid running interactive Nix workloads as root |
+| Store | Writable single-user `/nix` | No host Nix daemon or privileged Docker mode |
+| Nix sandbox | Disabled inside the container | Compatibility; **do not process untrusted derivations** |
+| Platforms | `linux/amd64` and `linux/arm64` | Built and smoke-tested in CI |
+| Registry distribution | GHCR, optional Docker Hub | Versioned, multi-platform images with SBOM/provenance |
 
-Use Alpine's packages rather than downloading an arbitrary upstream release archive. Review the installer before running it:
+The base image tag, Alpine package indexes, and unpinned remote Nix inputs can change over time. **This is not a bit-for-bit reproducible image.** Prefer a digest-pinned published image and flake lock files where reproducibility matters.
+
+Details: [Architecture and trust boundaries](docs/ARCHITECTURE.md), [Security policy](SECURITY.md).
+
+## Automated releases and maintenance
+
+The repository uses **Conventional Commits and semantic-release**. CI runs before publishing; only the protected default-branch release workflow has write credentials.
+
+| Event | Behavior |
+| --- | --- |
+| Pull request | Actionlint, ShellCheck, installer tests, release-notes compatibility tests, AMD64 and ARM64 image smoke tests |
+| `fix:` / `fix(deps):` merge | Patch release (`vX.Y.Z`) |
+| `feat:` merge | Minor release |
+| Breaking Conventional Commit | Major release |
+| `docs:` / `chore:` alone | No new semantic release |
+| Monthly Dependabot | Reviewable Docker, GitHub Actions and npm release-tooling PRs; **not auto-merged** |
+| Monthly release schedule | Runs the same tests, but creates no new version without releasable commits |
+| Branch housekeeping | Removes only verified closed/merged PR heads or explicit SHA-allowlisted superseded heads; skips active/protected branches |
+
+Successful releases create a GitHub Release and build multi-architecture images for **`ghcr.io/redoracle/nixos`**. Tags include `:vX.Y.Z`, `:X.Y.Z` and `:latest`, and builds request SBOM/provenance attestations. Docker Hub uses the same tags when both optional secrets are configured.
+
+Some dependency majors must be deferred until their **runtime compatibility** is proven. In particular, the currently installed Conventional Commits release-notes generator is tested with preset v9; Dependabot's preset v10 major upgrade is intentionally excluded pending compatibility.
+
+For workflows, required secrets, rollback procedures, recovery from partial releases, and branch cleanup controls, see [Release and maintenance handbook](docs/RELEASING.md).
+
+## Manual installation on an Alpine host
+
+Use the Alpine package manager. This path is **not** equivalent to the container's non-root store design.
 
 ```sh
 git clone https://github.com/redoracle/nixos.git
@@ -47,7 +105,7 @@ cd nixos
 sudo sh ./install_nix.sh
 ```
 
-The installer only checks that the host is Alpine, requires root, and runs `apk add --no-cache nix nix-openrc`. **It does not start system services or change an existing Nix store.** On a normal Alpine host running OpenRC, enable and start the packaged multi-user daemon explicitly:
+The script verifies it is running on Alpine as root, then installs `nix` and `nix-openrc`. It deliberately does **not** start a daemon, change an existing store, or rewrite host configuration. For an Alpine/OpenRC host, opt in to the packaged multi-user daemon separately:
 
 ```sh
 sudo rc-update add nix-daemon default
@@ -55,32 +113,7 @@ sudo rc-service nix-daemon start
 nix --version
 ```
 
-An OpenRC host needs the daemon and appropriate Nix permissions/configuration for unprivileged clients. This is a *different installation model* from the single-user Docker image. Do not use the script as a generic installation method for Debian, NixOS, macOS, or Alpine containers without OpenRC.
-
-## Releases and monthly maintenance
-
-The [release workflow](.github/workflows/release.yml) verifies both architectures, uses **semantic-release** to create GitHub releases from reviewed Conventional Commits, and publishes matching Docker images. Tags use `vMAJOR.MINOR.PATCH` (for example, `v3.0.0`) and represent the **container's compatibility**, not the version of Nix packaged by Alpine.
-
-| Event | What happens |
-| --- | --- |
-| Pull request | Shell lint, installer tests, semantic-release config tests, and `amd64` / `arm64` container smoke tests. No publish permissions or registry secrets. |
-| Merge to `master` | The same checks run first. A `fix:` commit produces a patch release, `feat:` a minor release, and a breaking change a major release. Releases are skipped if there are no releasable commits. |
-| Monthly Dependabot | Reviewable PRs for Docker/Alpine, GitHub Actions, and npm-based semantic-release plugins. Dependency update commits use the `fix(deps):` prefix. |
-| First day of each month | Scheduled verification at **03:17 UTC**, followed by release evaluation. A successful no-change run does **not** create a meaningless new tag. |
-
-Every new semantic release publishes **`ghcr.io/redoracle/nixos:vX.Y.Z`**, `:X.Y.Z`, and `:latest` as multi-architecture images with SBOM and provenance. When Docker Hub repository credentials are configured, the same version and `latest` tags are published there as well. Use the versioned tag or, ideally, an immutable digest in deployments. The GitHub Release is generated before the registry publish step; if publication fails, treat the workflow as failed and follow the [recovery procedure](docs/RELEASING.md).
-
-**Docker Hub setup:** provide repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (legacy `DOCKER_USERNAME` / `DOCKER_PASSWORD` are also supported). GHCR uses the built-in GitHub token and requires no additional secret. The GHCR package may need its visibility set to public after first publication. The release workflow never publishes images from untrusted PRs.
-
-See the [release and maintenance handbook](docs/RELEASING.md) for configuration, release rules, maintenance schedules, and recovery.
-
-## Updates and reproducibility
-
-The Dockerfile pins the Alpine **patch release**, and `apk add --no-cache` installs the versions currently available for its stable repositories. Rebuild regularly to pick up security fixes, and update the `FROM` tag after review. Nix from Alpine's repositories may lag behind the newest upstream Nix release; switching to an unverified upstream binary would not be a safe automatic upgrade.
-
-GitHub Dependabot checks Docker/Alpine, GitHub Actions, and npm-based release dependencies monthly; upgrades are **reviewed rather than auto-merged**. Pull-request CI never receives publication credentials. The privileged release workflow publishes only from `master` after checks succeed. Installed Nix is updated through Alpine's maintained package repositories when images are rebuilt.
-
-This is an operationally straightforward image, **not** a bit-for-bit reproducible build: stable Alpine repositories and upstream flake references still change over time. For stronger reproducibility, pin image digests and Nix flake lock files in downstream projects.
+Review Alpine OpenRC and Nix permissions for the target machine before enabling an unprivileged client or modifying a pre-existing store.
 
 ## Verification
 
@@ -88,15 +121,23 @@ This is an operationally straightforward image, **not** a bit-for-bit reproducib
 sh -n install_nix.sh tests/*.sh
 shellcheck --shell=sh install_nix.sh tests/*.sh
 sh tests/test-installer.sh
-node scripts/check-release.mjs
-docker build --tag alpine-nix:test .
+node --test tests/branch-cleanup.test.mjs
+npm install --ignore-scripts --no-audit --no-fund
+npm run test:release
+npm run test:release-notes
+docker build -t alpine-nix:test .
 docker run --rm -i alpine-nix:test sh -s < tests/smoke.sh
 ```
 
-The smoke test checks non-root execution, evaluates a Nix expression, adds a file to the local Nix store, and verifies the store. GitHub Actions runs these checks on both supported architectures.
+CI additionally checks workflow syntax and runs Docker smoke tests for both target architectures. Npm tooling is used **only for GitHub release automation**, not included in the published image.
 
-## Security and contributions
+## Project documentation
 
-Read [SECURITY.md](SECURITY.md) before deploying images, [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes, [SUPPORT.md](SUPPORT.md) for help, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for participation standards. The [architecture guide](docs/ARCHITECTURE.md) and [release handbook](docs/RELEASING.md) document design, trust boundaries, and publishing. Use structured [GitHub Issues](https://github.com/redoracle/nixos/issues) for reports and requests. See the [Nix manual](https://nixos.org/manual/nix/stable/) and [Alpine documentation](https://wiki.alpinelinux.org/) for upstream details.
+- [Architecture](docs/ARCHITECTURE.md): image layout, lifecycle, security boundaries, and engineering decisions
+- [Releasing](docs/RELEASING.md): SemVer, dependency reviews, registries, recovery, branch cleanup
+- [Changelog](CHANGELOG.md): canonical release history and versioning migration
+- [Security](SECURITY.md): supported builds, risk disclosure, threat model
+- [Contributing](CONTRIBUTING.md): development and PR acceptance requirements
+- [Support](SUPPORT.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [License](LICENSE)
 
-Licensed under the [MIT License](LICENSE).
+Issues and improvements are welcome through the [GitHub issue templates](https://github.com/redoracle/nixos/issues/new/choose).
