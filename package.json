@@ -1,0 +1,19 @@
+{
+  "name": "alpine-nix-release-tooling",
+  "version": "0.0.0-development",
+  "private": true,
+  "description": "Release automation for the redoracle Alpine + Nix container",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "test:release": "node scripts/check-release.mjs",
+    "release": "semantic-release"
+  },
+  "devDependencies": {
+    "@semantic-release/exec": "7.1.0",
+    "conventional-changelog-conventionalcommits": "9.3.1",
+    "semantic-release": "25.0.9"
+  }
+}

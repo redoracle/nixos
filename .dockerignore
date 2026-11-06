@@ -4,3 +4,10 @@
 logo.png
 install_nix.sh
 tests
+docs
+scripts
+node_modules
+package.json
+package-lock.json
+.releaserc.json
+.release-version

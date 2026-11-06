@@ -2,8 +2,7 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [master]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -15,7 +14,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Shell lint
+    name: Static checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,6 +29,11 @@ jobs:
           shellcheck --shell=sh install_nix.sh tests/*.sh
       - name: Test installer contract
         run: sh tests/test-installer.sh
+      - name: Validate release configuration and scripts
+        run: |
+          node --check scripts/prepare-release.mjs
+          node --check scripts/check-release.mjs
+          node scripts/check-release.mjs
 
   container:
     name: Container ${{ matrix.platform }}

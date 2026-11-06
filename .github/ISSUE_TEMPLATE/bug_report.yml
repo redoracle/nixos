@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible problem in the Alpine + Nix container or installer.
+title: "fix: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove secrets, tokens, personal data, and exploit details.
+        For sensitive vulnerabilities, consult SECURITY.md instead of opening a public issue.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: What went wrong?
+    validations:
+      required: true
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: Target architecture
+      options:
+        - linux/amd64
+        - linux/arm64
+        - Other / not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include commands and a minimal example.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized logs
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Image tag / Git commit and Docker version
+      placeholder: vX.Y.Z, commit SHA, docker version
