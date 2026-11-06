@@ -63,6 +63,10 @@ try {
       if (name === 'workspace_list') {
         assert.ok(result.entries.some((e) => e.name === 'catalog-test.txt'));
       }
+      if (name === 'workspace_stat') {
+        assert.equal(result.kind, 'directory');
+        assert.match(result.permissions, /^[0-7]{3}$/);
+      }
       if (name === 'workspace_hash') {
         assert.equal(result.sha256, createHash('sha256').update(fixtureText).digest('hex'));
       }

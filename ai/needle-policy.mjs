@@ -263,7 +263,7 @@ async function executeWorkspace(name, args, { workspace, allowWrite }) {
     const path = await checkedWorkspacePath(workspace, args.path, { file: true });
     const meta = await lstat(path);
     return { ok: true, kind: meta.isFile() ? 'file' : meta.isDirectory() ? 'directory' : 'other',
-      bytes: meta.size, mode: (meta.mode & 0o777).toString(8) };
+      bytes: meta.size, permissions: (meta.mode & 0o777).toString(8) };
   }
   if (name === 'workspace_read') {
     const handle = await getSafeFile(workspace, args.file, { limit: MAX_READ });

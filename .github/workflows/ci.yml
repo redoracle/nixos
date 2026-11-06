@@ -51,7 +51,7 @@ jobs:
           node --check scripts/check-release-notes.mjs
           node --check scripts/cleanup-branches.mjs
           node scripts/check-release.mjs
-          node --test tests/branch-cleanup.test.mjs tests/pi-needle.test.mjs
+          node --test tests/branch-cleanup.test.mjs tests/branch-cleanup-api.test.mjs tests/pi-needle.test.mjs
           node --check ai/needle-policy.mjs
           node --check ai/needle-cli.mjs
           node --check ai/needle-engine.mjs
