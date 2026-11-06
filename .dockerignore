@@ -1,0 +1,6 @@
+.git
+.github
+*.md
+logo.png
+install_nix.sh
+tests

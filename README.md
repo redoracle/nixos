@@ -1,276 +1,82 @@
-# Alpine + Nix → NixOS
+# Alpine Linux + Nix
 
-![GitHub Repo Stars](https://img.shields.io/github/stars/redoracle/nixos.svg?style=social&label=Star)
-![GitHub Forks](https://img.shields.io/github/forks/redoracle/nixos.svg?style=social&label=Fork)
-![GitHub Issues](https://img.shields.io/github/issues/redoracle/nixos.svg)
-![GitHub License](https://img.shields.io/github/license/redoracle/nixos.svg)
-![Docker Image Size](https://img.shields.io/docker/image-size/redoracle/nixos/latest)
-![Build Status](https://github.com/redoracle/nixos/actions/workflows/docker-image.yml/badge.svg)
+[![CI](https://github.com/redoracle/nixos/actions/workflows/ci.yml/badge.svg)](https://github.com/redoracle/nixos/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Table of Contents
+A small, non-root Alpine Linux container with the **Nix package manager** installed from Alpine's signed package repositories. This project is **not NixOS**: NixOS is a separate operating system with a declarative system configuration. This image runs Alpine with Nix available for development and experimentation.
 
-- [Introduction](#introduction)
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-  - [Using Docker](#using-docker)
-  - [Manual Installation](#manual-installation)
-- [Usage](#usage)
-- [Build and Deployment](#build-and-deployment)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
+## Quick start
 
-## Introduction
+Requirements: Docker with BuildKit, or an equivalent recent container engine.
 
-Welcome to the **Alpine + Nix → NixOS** project! This repository provides a streamlined environment that combines the lightweight and security-focused nature of Alpine Linux with the powerful and reproducible package management capabilities of Nix. The result is a flexible and efficient system reminiscent of NixOS, tailored for both development and production environments.
-
-## Features
-
-- **Lightweight Base**: Utilizes Alpine Linux, known for its minimal footprint and security-oriented design.
-- **Reproducible Package Management**: Leverages Nix for reliable and reproducible builds, atomic upgrades, and rollbacks.
-- **Multi-Architecture Support**: Built to support multiple architectures, including `amd64` and `arm64`.
-- **Automated CI/CD**: Integrated GitHub Actions for continuous integration and deployment to GitHub Container Registry (GHCR) and Docker Hub.
-- **Secure Environment**: All binaries are compiled with security features such as Position Independent Executables (PIE) and stack smashing protection.
-
-## Prerequisites
-
-Before you begin, ensure you have met the following requirements:
-
-- **Docker**: Install Docker to build and run the containerized environment.
-  - [Docker Installation Guide](https://docs.docker.com/get-docker/)
-- **GitHub Account**: Required for accessing the repository and configuring GitHub Actions.
-- **Docker Hub Account**: Optional, for deploying images to Docker Hub.
-
-## Installation
-
-### Using Docker
-
-1. **Clone the Repository**
-
-   ```bash
-   git clone https://github.com/redoracle/nixos.git
-   cd nixos
-   ```
-
-2. **Build the Docker Image**
-
-   ```bash
-   docker build -t ghcr.io/redoracle/nixos:latest .
-   ```
-
-3. **Run the Docker Container**
-
-   ```bash
-   docker run -it ghcr.io/redoracle/nixos:latest /bin/bash
-   ```
-
-### Manual Installation
-
-If you prefer to install Nix manually on Alpine Linux:
-
-1. **Ensure Dependencies are Installed**
-
-   ```bash
-   apk update && apk upgrade
-   apk add --no-cache bash curl sudo openssl grep sed xz gnupg
-   ```
-
-2. **Download and Run the Installation Script**
-
-   ```bash
-   curl -O https://raw.githubusercontent.com/redoracle/nixos/refs/heads/master/install_nix.sh
-   chmod +x install_nix.sh
-   ./install_nix.sh
-   ```
-
-## Usage
-
-Once installed, you can use Nix to manage packages within your Alpine Linux environment. Some common Nix commands include:
-
-- **Install a Package**
-
-  ```bash
-  nix-env -iA nixpkgs.package-name
-  ```
-
-- **Upgrade Packages**
-
-  ```bash
-  nix-env -u
-  ```
-
-- **Rollback to Previous Configuration**
-
-  ```bash
-  nix-env --rollback
-  ```
-
-For more detailed usage, refer to the [Nix Manual](https://nixos.org/manual/nix/stable/).
-
-## Build and Deployment
-
-This project utilizes GitHub Actions to automate the build and deployment process. The workflow is triggered on pushes to the `main` or `master` branches, on manual dispatch, and is scheduled to run every Sunday.
-
-### GitHub Actions Workflow
-
-The workflow performs the following steps:
-
-1. **Checkout Repository**: Retrieves the latest code from the repository.
-2. **Set Up Docker Buildx**: Prepares the Docker builder for multi-platform builds.
-3. **Authenticate with Registries**: Logs into GitHub Container Registry (GHCR) and Docker Hub.
-4. **Get Nix Version**: Extracts the installed Nix version for tagging the image and releases.
-5. **Build and Push Docker Image**: Builds the Docker image and pushes it to both GHCR and Docker Hub.
-6. **Create Release**: Automatically creates a new GitHub release if the version does not exist.
-7. **Cleanup**: Prunes unused Docker builder cache to optimize runner resources.
-
-### Workflow Configuration
-
-The GitHub Actions workflow is defined in `.github/workflows/docker-deploy.yml`. Ensure you have set the following secrets in your GitHub repository:
-
-- `DOCKER_USERNAME`: Your Docker Hub username.
-- `DOCKER_PASSWORD`: Your Docker Hub password or access token.
-
-### Example Workflow File
-
-```yaml
-name: Build and Deploy NixOS Docker Image
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * 0'  # Every Sunday at midnight UTC
-  push:
-    branches:
-      - master
-      - main
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      # Checkout the repository
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Set up Docker Buildx
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Log in to GitHub Container Registry (GHCR)
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Log in to Docker Hub
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # Get Nix version from the Dockerfile
-      - name: Get Nix version
-        id: get_version
-        run: |
-          NIX_VERSION=$(docker run --rm $(docker build -q .) nix-env --version | cut -d ' ' -f 3)
-          echo "NIX_VERSION=$NIX_VERSION" >> $GITHUB_ENV
-
-      # Build and Push Docker Image
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/nixos:${{ env.NIX_VERSION }}
-            ghcr.io/${{ github.repository_owner }}/nixos:latest
-            ${{ secrets.DOCKER_USERNAME }}/nixos:${{ env.NIX_VERSION }}
-            ${{ secrets.DOCKER_USERNAME }}/nixos:latest
-
-      # Create GitHub release if it does not exist
-      - name: Create GitHub release
-        if: env.create_release == 'true'
-        uses: actions/create-release@v1
-        with:
-          tag_name: v${{ env.NIX_VERSION }}
-          release_name: NixOS Docker Image v${{ env.NIX_VERSION }}
-          draft: false
-          prerelease: false
-          body: |
-            NixOS Docker image version ${{ env.NIX_VERSION }} has been built and released.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Post-build cleanup (optional)
-      - name: Docker prune
-        run: docker builder prune --force
+```sh
+git clone https://github.com/redoracle/nixos.git
+cd nixos
+docker build --tag alpine-nix:local .
+docker run --rm -it alpine-nix:local
 ```
 
-## Contributing
+Inside the container:
 
-Contributions are welcome! To contribute:
-
-1. **Fork the Repository**
-
-2. **Create a Feature Branch**
-
-   ```bash
-   git checkout -b feature/YourFeature
-   ```
-
-3. **Commit Your Changes**
-
-   ```bash
-   git commit -m "Add some feature"
-   ```
-
-4. **Push to the Branch**
-
-   ```bash
-   git push origin feature/YourFeature
-   ```
-
-5. **Open a Pull Request**
-
-Please ensure your contributions adhere to the following guidelines:
-
-- Follow the existing coding style.
-- Write clear and concise commit messages.
-- Include relevant documentation and tests.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-
-## Contact
-
-For any questions or support, please open an [issue](https://github.com/redoracle/nixos/issues)
-
----
-
-![Your Repository Stats](https://github-readme-stats.vercel.app/api?username=redoracle&show_icons=true&theme=radical)
-![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=redoracle&layout=compact&theme=radical)
+```sh
+nix --version
+nix-instantiate --eval --expr '1 + 1'
+nix shell nixpkgs#hello
 ```
 
-### What has been added:
+The first two commands work offline. `nix shell` requires network access and downloads Nixpkgs on first use. To mount a working directory, add `-v "$PWD:/workspace" -w /workspace` to `docker run`. Treat the mounted directory as writable by container UID **10001** (or adjust host ownership/permissions as appropriate).
 
-1. **Nix
+## Architecture and supported platforms
 
- Version Retrieval:**
-   - Added a new workflow step that fetches the Nix version from the Docker build and uses it for tagging the Docker image and creating GitHub releases.
+- **Base:** Alpine Linux `3.24.4` (stable branch), rather than an unpredictable `latest` tag.
+- **Nix:** Alpine's `community` repository package; the version is determined by the selected stable Alpine repositories, not by scraping release pages or fetching a shell script.
+- **Security model:** the unprivileged `nixuser` (UID/GID 10001) owns a **single-user** Nix store at `/nix`. No Docker socket, root password, privileged container, or passwordless sudo is required.
+- **Isolation:** Nix sandboxing is disabled **inside the container** because ordinary container environments lack the user namespaces required by Nix's sandbox. This weakens build isolation and reproducibility. Never execute untrusted derivations in this image. Keep the container itself unprivileged and apply your own runtime restrictions.
+- **Platforms:** CI attempts image builds and store smoke tests on `linux/amd64` and `linux/arm64`.
 
-2. **Image Publishing:**
-   - Updated the Docker build and push step to push images to both Docker Hub and GHCR with versioned and `latest` tags.
+The Nix store lives inside the container by default and is lost when the container is removed. Persist it only if you understand ownership, compatibility, and trust implications of sharing a store between containers.
 
-3. **GitHub Release Creation:**
-   - Added a step to create a new GitHub release if a release with the Nix version tag doesn’t already exist.
+## Manual installation on Alpine hosts
 
-4. **Scheduled Build:**
-   - The workflow now runs automatically every Sunday at midnight UTC.
+Use Alpine's packages rather than downloading an arbitrary upstream release archive. Review the installer before running it:
+
+```sh
+git clone https://github.com/redoracle/nixos.git
+cd nixos
+sudo sh ./install_nix.sh
+```
+
+The installer only checks that the host is Alpine, requires root, and runs `apk add --no-cache nix nix-openrc`. **It does not start system services or change an existing Nix store.** On a normal Alpine host running OpenRC, enable and start the packaged multi-user daemon explicitly:
+
+```sh
+sudo rc-update add nix-daemon default
+sudo rc-service nix-daemon start
+nix --version
+```
+
+An OpenRC host needs the daemon and appropriate Nix permissions/configuration for unprivileged clients. This is a *different installation model* from the single-user Docker image. Do not use the script as a generic installation method for Debian, NixOS, macOS, or Alpine containers without OpenRC.
+
+## Updates and reproducibility
+
+The Dockerfile pins the Alpine **patch release**, and `apk add --no-cache` installs the versions currently available for its stable repositories. Rebuild regularly to pick up security fixes, and update the `FROM` tag after review. Nix from Alpine's repositories may lag behind the newest upstream Nix release; switching to an unverified upstream binary would not be a safe automatic upgrade.
+
+GitHub Dependabot tracks Docker base-image and GitHub Actions version updates. CI tests proposed changes but **does not publish images** or require registry credentials. Release/publishing can be added later as a separate, reviewed workflow using least-privilege tokens and immutable image references.
+
+This is an operationally straightforward image, **not** a bit-for-bit reproducible build: stable Alpine repositories and upstream flake references still change over time. For stronger reproducibility, pin image digests and Nix flake lock files in downstream projects.
+
+## Verification
+
+```sh
+sh -n install_nix.sh tests/*.sh
+shellcheck --shell=sh install_nix.sh tests/*.sh
+docker build --tag alpine-nix:test .
+docker run --rm -i alpine-nix:test sh -s < tests/smoke.sh
+```
+
+The smoke test checks non-root execution, evaluates a Nix expression, adds a file to the local Nix store, and verifies the store. GitHub Actions runs these checks on both supported architectures.
+
+## Security and contributions
+
+Read [SECURITY.md](SECURITY.md) before deploying images and [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes. Report issues through [GitHub Issues](https://github.com/redoracle/nixos/issues). See the [Nix manual](https://nixos.org/manual/nix/stable/) and [Alpine documentation](https://wiki.alpinelinux.org/) for upstream details.
+
+Licensed under the [MIT License](LICENSE).
