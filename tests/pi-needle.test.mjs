@@ -62,7 +62,10 @@ test('all manual-only catalog commands stay non-executable even with write permi
 
 test('read-only commands are not run when explicit execute is omitted', async () => {
   for (const [name, entry] of definitions.filter(([,e]) => e.mode === 'readonly')) {
-    const result = await executeAllowed({ name, arguments: entry.exampleArguments }, {
+    const argumentsForTest = Object.fromEntries(Object.entries(entry.exampleArguments).map(
+      ([key, value]) => [key, value === '${STORE_PATH}' ? `/nix/store/${'a'.repeat(32)}-catalog-fixture` : value]
+    ));
+    const result = await executeAllowed({ name, arguments: argumentsForTest }, {
       catalog,
     });
     assert.equal(result.executed, false, name);
@@ -110,4 +113,22 @@ test('natural-language scenario examples refer to declared tool names and groups
     assert.ok(Object.hasOwn(catalog.tools, entry.expectedTool), entry.id);
     assert.equal(entry.scope, catalog.tools[entry.expectedTool].category, entry.id);
   }
+});
+
+test('lexical Needle shortlist keeps relevant tools and never exceeds six choices', async () => {
+  const { selectTools, inferScope } = await import('../ai/needle-selection.mjs');
+  const examples = [
+    ['nix','What version of Nix is installed?','nix_version'],
+    ['apk','Show the Alpine nix package dependencies','apk_dependencies'],
+    ['workspace','List files in the workspace','workspace_list'],
+    ['workflow','Run the local dependency audit workflow','workflow_dependency_audit'],
+    ['system','Show current CPU architecture','system_arch'],
+  ];
+  for (const [scope,prompt,expected] of examples) {
+    const selection = selectTools(catalog,scope,prompt);
+    assert.equal(selection.scope,scope);
+    assert.ok(selection.names.length <= 6);
+    assert.ok(selection.names.includes(expected), `${scope}: ${selection.names.join(', ')}`);
+  }
+  assert.equal(inferScope('Show my Alpine packages'),'apk');
 });

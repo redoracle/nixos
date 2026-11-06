@@ -55,6 +55,7 @@ jobs:
           node --check ai/needle-policy.mjs
           node --check ai/needle-cli.mjs
           node --check ai/needle-engine.mjs
+          node --check ai/needle-selection.mjs
           node --check ai/needle-pi-extension.js
 
   container:
@@ -80,7 +81,7 @@ jobs:
           docker buildx build --builder default --platform '${{ matrix.platform }}' --load \
             --file Dockerfile.pi --build-arg BASE_IMAGE=alpine-nix:ci \
             --tag alpine-nix-pi:ci .
-      - name: Smoke-test Pi and offline Needle inference
-        run: docker run --rm -i alpine-nix-pi:ci sh -s < tests/pi-smoke.sh
       - name: Execute every catalog entry under the unprivileged image user
         run: docker run --rm -i alpine-nix-pi:ci node --input-type=module - < tests/pi-catalog-smoke.mjs
+      - name: Smoke-test Pi and offline Needle inference
+        run: docker run --rm -i alpine-nix-pi:ci sh -s < tests/pi-smoke.sh

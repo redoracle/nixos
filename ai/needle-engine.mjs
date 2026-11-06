@@ -1,25 +1,17 @@
 import { Needle, tool } from 'cactus-needle';
 import { validateCall, planCall } from './needle-policy.mjs';
 
-export const SCOPES = Object.freeze(['auto','system','apk','nix','workspace','workflow','all']);
-export function inferScope(prompt) {
-  const input = String(prompt).toLowerCase();
-  if (/\b(apk|alpine|apk-tools|packages? installed|package database|repositories)\b/.test(input)) return 'apk';
-  if (/\b(nix|flake|derivation|store|profile|nixpkgs|gc roots)\b/.test(input)) return 'nix';
-  if (/\b(file|directory|folder|workspace|sha256|create|read text)\b/.test(input)) return 'workspace';
-  if (/\b(workflow|health audit|upgrade plan|dependency audit|preflight)\b/.test(input)) return 'workflow';
-  return 'system';
-}
+import { SCOPES, selectTools } from './needle-selection.mjs';
+export { SCOPES };
 
-export function toolDefinitions(catalog, scope) {
-  if (!SCOPES.includes(scope)) throw new Error(`Unsupported catalog scope: ${scope}`);
+export function toolDefinitions(catalog, names) {
   const result = {};
-  for (const [name, entry] of Object.entries(catalog.tools)) {
-    if (scope !== 'all' && entry.category !== scope) continue;
-    result[name] = tool({ description: entry.description,
-      inputSchema: entry.inputSchema });
+  for (const name of names) {
+    const entry = catalog.tools[name];
+    if (!entry) throw new Error('Selected tool is absent from the catalog');
+    result[name] = tool({ description: entry.description, inputSchema: entry.inputSchema });
   }
-  if (!Object.keys(result).length) throw new Error(`No tools available for scope ${scope}`);
+  if (!Object.keys(result).length) throw new Error('No selected catalog tools');
   return result;
 }
 
@@ -41,17 +33,17 @@ export async function routeNeedle(prompt, { catalog, scope = 'auto' } = {}) {
     throw new Error('Natural-language request must be 1–1024 characters');
   }
   if (!catalog) throw new Error('Catalog is required');
-  const selectedScope = scope === 'auto' ? inferScope(prompt) : scope;
+  const selection = selectTools(catalog, scope, prompt, 6);
   const needle = new Needle({
     stateless: true,
-    tools: toolDefinitions(catalog, selectedScope),
-    system: 'Select only catalogued tools for Nix/Alpine tasks. Never invent command names. Tools marked *_plan are advice only; never execute them.',
+    tools: toolDefinitions(catalog, selection.names),
+    system: 'Only propose supplied Nix/Alpine tools. Never execute commands. Plans marked *_plan are manual only.',
   });
   try {
-    const output = await needle.generate({ prompt, maxOutputTokens: 320 });
+    const output = await needle.generate({ prompt, maxOutputTokens: 512 });
     const calls = normalizePredictions(output, catalog);
     return {
-      prompt, scope: selectedScope, executed: false,
+      prompt, scope: selection.scope, selectedTools: selection.names, executed: false,
       function_calls: calls, plans: calls.map(call => planCall(call, catalog)),
       note: 'Needle proposes structured calls only; no commands were executed.',
     };

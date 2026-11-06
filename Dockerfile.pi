@@ -21,7 +21,7 @@ RUN cd /opt/pi-needle \
     && npm install --ignore-scripts --omit=dev --no-audit --no-fund \
     && ln -s /opt/pi-needle/node_modules/.bin/pi /usr/local/bin/pi
 
-COPY ai/needle-cli.mjs ai/needle-engine.mjs ai/needle-policy.mjs ai/needle-pi-extension.js ai/needle-tools.json /opt/pi-needle/
+COPY ai/needle-cli.mjs ai/needle-engine.mjs ai/needle-selection.mjs ai/needle-policy.mjs ai/needle-pi-extension.js ai/needle-tools.json /opt/pi-needle/
 RUN chmod 755 /opt/pi-needle/needle-cli.mjs \
     && ln -s /opt/pi-needle/needle-cli.mjs /usr/local/bin/needle-cli \
     && mkdir -p /home/nixuser/.pi/agent \
