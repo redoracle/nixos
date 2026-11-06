@@ -48,8 +48,8 @@ jobs:
           node-version: "24"
           package-manager-cache: false
 
-      - name: Install pinned release tooling
-        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install integrity-locked release tooling
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Validate semantic release setup and release notes
         run: |
@@ -124,6 +124,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and publish tested multi-platform image
+        id: vanilla_publish
         if: steps.version.outputs.version != ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -181,7 +182,7 @@ jobs:
           context: .
           file: ./Dockerfile.pi
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository }}:v${{ steps.version.outputs.version }}
+            BASE_IMAGE=ghcr.io/${{ github.repository }}@${{ steps.vanilla_publish.outputs.digest }}
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.pi_tags.outputs.tags }}
@@ -204,3 +205,16 @@ jobs:
           docker buildx imagetools inspect --raw "${GHCR_IMAGE}-pi:v${RELEASE_VERSION}" |
             jq -e '[.manifests[].platform.architecture] |
                     ((index("amd64") != null) and (index("arm64") != null))'
+
+      - name: Smoke-test both published GHCR image variants
+        if: steps.version.outputs.version != ''
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Pull from GHCR, not the local Buildx cache, so this validates the
+          # exact published artifacts and their entrypoint dependencies.
+          docker run --pull always --rm "$GHCR_IMAGE:v$RELEASE_VERSION" nix --version
+          docker run --pull always --rm "${GHCR_IMAGE}-pi:v${RELEASE_VERSION}" needle-cli --health |
+            jq -e '.count == 60 and .executedByDefault == false and .runtime == "cactus-needle WASM"'

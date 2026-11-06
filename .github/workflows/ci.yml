@@ -38,12 +38,8 @@ jobs:
         with:
           node-version: "24"
           package-manager-cache: false
-      - name: Install release tooling dependencies
-        run: npm install --ignore-scripts --no-audit --no-fund
-      - name: Generate clean release-tooling lockfile for final reproducibility pass
-        run: |
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          node -e 'const fs=require("node:fs");console.log("ROOT_NPM_LOCK_B64:"+fs.readFileSync("package-lock.json").toString("base64"))'
+      - name: Install integrity-locked release tooling dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify release dependency compatibility
         run: npm ls --depth=0
       - name: Verify release-notes generation and compatibility
@@ -60,7 +56,7 @@ jobs:
           node --check scripts/check-release-notes.mjs
           node --check scripts/cleanup-branches.mjs
           node scripts/check-release.mjs
-          node --test tests/branch-cleanup.test.mjs tests/branch-cleanup-api.test.mjs tests/pi-needle.test.mjs tests/needle-scenarios.test.mjs tests/release-preparation.test.mjs tests/model-integrity.test.mjs
+          node --test tests/branch-cleanup.test.mjs tests/branch-cleanup-api.test.mjs tests/pi-needle.test.mjs tests/needle-scenarios.test.mjs tests/release-preparation.test.mjs tests/model-integrity.test.mjs tests/dependency-locks.test.mjs
           node --check ai/needle-policy.mjs
           node --check ai/needle-cli.mjs
           node --check ai/needle-engine.mjs

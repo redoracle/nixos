@@ -4,6 +4,7 @@
 // No proposed tool is executed; failures are reported, not silently skipped.
 import { readFile } from 'node:fs/promises';
 import { routeNeedle } from './needle-engine.mjs';
+import { selectTools } from './needle-selection.mjs';
 
 function parseArgs(argv) {
   const options = { limit: 5, mode: 'auto', threshold: null };
@@ -40,16 +41,24 @@ let correct = 0, shortlisted = 0, empty = 0, errors = 0;
 const results = [];
 
 for (const entry of tested) {
+  // Measure the deterministic candidate-selection stage independently from
+  // model execution. A model exception must not erase a valid shortlist hit.
+  const requestedScope = options.mode === 'auto' ? 'auto' : entry.scope;
+  const candidates = selectTools(catalog, requestedScope, entry.prompt);
+  const offered = candidates.names.includes(entry.expectedTool);
+  if (offered) shortlisted++;
   try {
     const result = await routeNeedle(entry.prompt, {
-      catalog, scope: options.mode === 'auto' ? 'auto' : entry.scope,
+      catalog, scope: requestedScope,
     });
     if (result.executed !== false || result.plans.some((p) => p.executed !== false)) {
       throw new Error('Router executed a tool during benchmark');
     }
-    const offered = result.selectedTools.includes(entry.expectedTool);
+    if (result.scope !== candidates.scope ||
+        JSON.stringify(result.selectedTools) !== JSON.stringify(candidates.names)) {
+      throw new Error('Inferred tool shortlist changed unexpectedly');
+    }
     const chosen = result.function_calls.some((call) => call.name === entry.expectedTool);
-    if (offered) shortlisted++;
     if (chosen) correct++;
     if (result.function_calls.length === 0) empty++;
     results.push({
@@ -59,7 +68,9 @@ for (const entry of tested) {
   } catch (error) {
     errors++;
     results.push({
-      id: entry.id, expected: entry.expectedTool, error: String(error.message ?? error),
+      id: entry.id, expected: entry.expectedTool, offered,
+      inferredScope: candidates.scope,
+      error: String(error.message ?? error),
     });
   }
 }

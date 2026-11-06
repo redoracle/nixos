@@ -152,13 +152,17 @@ docker run --rm alpine-nix-pi:local \
 
 The JSON report distinguishes **offered-tool recall**, **actual selected-tool accuracy**, **empty responses**, and inference errors. No catalog tool is executed. CI deliberately does not impose a 95% model-accuracy requirement without an independently established hardware/model baseline.
 
+CI runs the full 35-example real model benchmark on AMD64 in non-gating mode and records its measured accuracy, empty decisions and inference errors. The benchmark is omitted on emulated ARM64 to avoid treating emulation speed as a model-performance metric.
+
+**Measured initial baseline (2026-11-06, [CI run 42277865194](https://github.com/redoracle/nixos/actions/runs/42277865194)): 11/35 correct (31.4%), 11 empty predictions and four token-budget truncation errors.** The deterministic selector offered the expected action on every documented scenario, but the model often chose a different action or abstained. This is **not production-grade autonomous routing accuracy**. Prefer audited `--call-json` for deterministic execution, treat natural-language Needle proposals as advisory, and do not enable unsupervised model-selected writes or system changes. The benchmark is non-gating to measure regressions honestly while improving model/tool descriptions and routing.
+
 ## Tested use cases and boundaries
 
 The repository's CI runs on **`linux/amd64` and `linux/arm64`**. Each architecture job:
 
 1. Builds and smoke-tests the vanilla Alpine + Nix image.
 2. Builds the optional Pi + Needle image from that tested base.
-3. Checks Pi CLI availability, registers the real Pi extension with a test host, verifies that Needle weights are present and exercises actual offline model inference without tool execution.
+3. Checks Pi CLI availability, checks the model weights against the pinned SHA-256, runs the actual Pi RPC extension loader, and completes an end-to-end tool-calling conversation through a deterministic local OpenAI-compatible provider plus actual offline Needle inference.
 4. Validates every tool's metadata and schema, then performs **all 60 deterministic operation tests** under UID 10001: read-only operations execute against the image; advisory operations must remain non-executable; the workspace create action is tested under explicit permission against a temporary fixture.
 5. Verifies that paths, shell-like package options, unexpected JSON properties, and hidden/secret files cannot bypass the catalog policy.
 
@@ -171,7 +175,7 @@ The deterministic checks validate command mapping and safe execution, **not** a 
 - **Command trust:** executed diagnostics resolve only approved, root-owned system binaries in the Alpine image. The original absolute applet path is preserved to support BusyBox commands; the runtime `PATH` is fixed rather than inherited from the user. This does not confer privileges and is not a sandbox for Pi's independently accessible tools.
 - **Model-scope integrity:** predicted function calls must belong to the exact subset of tools offered for the current request, not merely the full 60-entry catalog. Tests cover wrong-scope and malformed calls.
 - **Secrets:** never put API keys in images or mount host secrets into an unrestricted Pi session. Pi's own tools can bypass Needle's router policy.
-- **Supply chain:** `apk` packages come from Alpine-signed repositories; npm dependencies are top-level version-pinned but transitive versions are not lockfile-pinned in this PR. This is a known reproducibility gap. Model weights are fetched at build time; review upstream model/license terms and consider a digest-pinned artifact mirror.
+- **Supply chain:** `apk` packages come from Alpine-signed repositories; both the release tooling and the optional Pi dependencies have checked-in npm v3 lockfiles, with `npm ci --ignore-scripts` used in CI and Docker builds. Registry tarballs are SHA-512 integrity checked. The offline Needle model is verified against the pinned SHA-256 embedded in the integrity-locked `cactus-needle` package; weights are fetched at build time, not runtime. The Alpine base itself uses signed repositories but is not fully digest-pinned in the local Dockerfile. For publishing, the opt-in Pi image derives from the immutable digest emitted by the versioned vanilla image build.
 - **Resource use:** the Pi image is intentionally larger, includes Node.js and model weights, and may have slower CPU inference on ARM emulation. Compare release image sizes after publishing.
 - **Deployment:** keep the baseline variant for minimal systems. Use a versioned or digest-pinned `nixos-pi` tag only when the optional features are needed.
 - **Rollback:** run the previous successful `nixos-pi` digest or switch directly back to the vanilla Alpine + Nix image; the main Dockerfile remains untouched.
