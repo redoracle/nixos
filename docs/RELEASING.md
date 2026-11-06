@@ -1,68 +1,117 @@
-# Release and maintenance handbook
+# Release and repository maintenance runbook
 
-## Versioning
+This is the operational reference for maintainers of `redoracle/nixos`. It documents the automated SemVer pipeline, dependency review, registry publication, incident recovery, and safe cleanup of obsolete branches.
 
-Release automation follows the same **semantic-release** pattern used in other public `redoracle` repositories. `master` is the sole release branch. The last valid SemVer tag is used as the starting point; old tags such as `v2.30.1` reflect historical Nix package numbering, whereas **future tags describe the container's compatibility and behavior**, not the installed Nix version.
+## Versioning and change policy
 
-Conventional Commit examples:
+The source repository has a historical name. Release versions now describe the **Alpine + Nix container** and its compatibility, **not** the version of the Alpine-packaged Nix command.
 
-| Commit | Result |
+The release branch is `master`. Semantic-release reads Conventional Commits and creates immutable Git tags of the form `vMAJOR.MINOR.PATCH`. Existing `v2.x` tags reflect the previous Nix-versioning convention; the malformed historical `v` tag is preserved for auditability but is not a SemVer release.
+
+| Squash-merge title / commit | Release impact |
 | --- | --- |
-| `fix: ...` or `fix(deps): ...` | Patch |
-| `feat: ...` | Minor |
-| `feat!: ...` plus a `BREAKING CHANGE:` footer | Major |
-| `docs: ...`, `test: ...`, `chore: ...` | No release by default |
+| `fix: ...` or `fix(deps): ...` | PATCH |
+| `feat: ...` | MINOR |
+| `feat!: ...` with a `BREAKING CHANGE:` footer | MAJOR |
+| `perf: ...` or `revert: ...` | PATCH |
+| `docs: ...`, `test: ...`, `chore: ...` | No new tag by default |
 
-A PR title used for **squash merges** must retain the appropriate conventional-commit prefix and breaking-change information. Never manually overwrite a versioned release tag.
+The **squash commit message**, not the PR's number of commits, determines the change type. For breaking changes, preserve the full footer at merge time; a `!` marker alone should not replace the written migration description.
 
-## Scheduled updates
+## Delivery pipeline
 
-- **Monthly Dependabot:** opens reviewable updates for Alpine Docker base image, GitHub Actions, and npm-based release tooling. The configured `fix(deps)` prefix produces patch releases after such PRs are merged.
-- **Monthly scheduled release workflow:** on the first day of each month at 03:17 UTC, runs lint and both platform image smoke tests, then checks for releasable commits. If nothing changed, no GitHub release or Docker version tag is created.
-- **On merge to master:** the same verification and release pipeline runs automatically for conventional commits; publication is limited to `master`.
-- **Manual runs:** `Actions → Semantic release and container publishing → Run workflow` on `master`. Manual dispatch also respects semantic-release's versioning rules.
+Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml).
 
-Updates are **not auto-merged**. New versions require review and green checks. Rebuilds pick up compatible Alpine package updates from its stable repositories, but newly published Nix or Alpine upstream releases do not themselves guarantee a version bump.
+1. Run reusable CI, including workflow linting, shell tests, release-notes generator compatibility, and AMD64/ARM64 Docker builds with store smoke tests.
+2. Set up Node.js 24 and install the private repository's release-tooling dependencies.
+3. Run semantic-release against the repository's Git history. On a releasable change, create the SemVer tag, GitHub Release, and generated notes.
+4. If a new version was created, authenticate to GHCR using the default-branch `GITHUB_TOKEN`. Authenticate to Docker Hub only when both optional credentials exist.
+5. Build and publish one multi-platform image with source/revision labels, SBOM, and provenance; publish the matching version and `latest` tags.
+6. Inspect the published GHCR image manifest and assert both AMD64 and ARM64 are present.
 
-## Registry setup
+The release workflow is serialized via GitHub Actions concurrency; it runs on `master` pushes, manual dispatches on `master`, and the first day of every month at **03:17 UTC**. If nothing changed with SemVer impact, the scheduled check performs verification but creates **no fake release**.
 
-The workflow has minimal privileges: `contents: write` and `packages: write` in the release job only. GitHub's built-in `GITHUB_TOKEN` publishes to **`ghcr.io/redoracle/nixos`**.
+### Registry credentials
 
-Optional Docker Hub publication is enabled when both repository secrets are available:
+| Target | Registry / repository | Authentication |
+| --- | --- | --- |
+| Primary | `ghcr.io/redoracle/nixos` | Built-in `GITHUB_TOKEN` with `packages: write` |
+| Optional | `docker.io/<configured-user>/nixos` | Secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` |
+| Legacy Docker Hub aliases | Same | `DOCKER_USERNAME` and `DOCKER_PASSWORD` |
 
-- `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (preferred), or
-- `DOCKER_USERNAME` and `DOCKER_PASSWORD` (legacy compatibility).
+The Docker Hub image repository must exist and the token must have push permission. Confirm GHCR package visibility is set to **public** if anonymous pulls are intended.
 
-The corresponding Docker Hub repository must exist and the token must permit pushing. Ensure that the GHCR package is configured as **public** if public pulls are expected. Never put registry credentials into the Dockerfile or GitHub repository.
+Version labels published on a new release are `vX.Y.Z`, `X.Y.Z` and the moving `latest` tag in each configured registry. Use immutable SHA256 image digests in critical deployments and never assume that a moving tag can be rolled back automatically.
 
-Each successful release builds both `linux/amd64` and `linux/arm64` in one build and publishes these tags:
+### Release verification
 
-- `ghcr.io/redoracle/nixos:vX.Y.Z`
-- `ghcr.io/redoracle/nixos:X.Y.Z`
-- `ghcr.io/redoracle/nixos:latest`
-- The equivalent `docker.io/<Docker-Hub-username>/nixos` tags, when configured.
+View the run in [GitHub Actions](https://github.com/redoracle/nixos/actions/workflows/release.yml), check the published GitHub Release in [Releases](https://github.com/redoracle/nixos/releases), and inspect the multi-architecture manifest:
 
-Use `:vX.Y.Z` for pinned releases, or preferably the registry digest shown after publishing for immutable deployment. `:latest` tracks the most recent stable publication and is mutable.
+```sh
+docker buildx imagetools inspect ghcr.io/redoracle/nixos:vX.Y.Z
+```
 
-## Release safety and recovery
+Replace `X.Y.Z` with the actual published semantic version. Verify the reported manifest has `linux/amd64` and `linux/arm64`; inspect SBOM/provenance attestations and image digest as required by your deployment policy.
 
-1. Require the `Static checks` and both `Container` PR checks via branch protection/rulesets. Do not grant secrets to untrusted PR workflows.
-2. Review breaking changes, vulnerability information, and the dependency diff before merging.
-3. Check the `Semantic release and container publishing` workflow, GitHub Release notes, and GHCR image manifest. Docker Hub push failures fail the job when Docker Hub is configured.
-4. If semantic-release has created the tag/release but registry publication failed, **do not delete or forcibly move the tag**. Investigate the failing step. Re-publish the missing image tags for the existing release from the exact tagged commit using reviewed, authenticated Docker commands, then verify both architecture manifests.
-5. A rerun with an existing tag may not cause semantic-release to publish the same release again; do not mistake a green no-op rerun for successful artifact recovery.
+## Reviewable dependency upgrades
 
-## Local verification
+`.github/dependabot.yml` checks Docker/Alpine, GitHub Actions, and npm release tooling **monthly**. No dependency PR is auto-merged; maintainers must inspect release notes, migration implications, dependencies, and CI results.
+
+The `conventional-changelog-conventionalcommits` v10 major upgrade is intentionally ignored for now. Its writer version is incompatible with the currently stable release-notes generation stack. Keep v9.3.1 until an upgraded generator has passed the real `npm run test:release-notes` integration test. Do not bypass this policy merely because `npm install` succeeds.
+
+Merge compatible dependency PRs independently with `fix(deps):` titles and green CI. Merges can create new patch releases and images; this is expected. Major upgrades deserve explicit code review and, if incompatible, a documented deferral.
+
+## Cleanup of merged and superseded branches
+
+Workflow: [`.github/workflows/housekeeping.yml`](../.github/workflows/housekeeping.yml).
+
+Housekeeping runs after `master` pushes, on the **second day of each month at 04:43 UTC**, or by manual dispatch. Automatic runs prune only qualifying branches. Manual dispatch defaults to **dry-run** so maintainers can preview candidates before deletion.
+
+The eligibility policy is intentionally conservative:
+
+- Never delete `master`, protected branches, or any head associated with an open PR.
+- A closed, **merged** PR from the same repository qualifies only if its recorded head SHA equals the branch's current SHA.
+- Closed, **unmerged** PRs do not qualify unless the exact ref and SHA appear in the reviewed legacy-superseded allowlist.
+- Recheck live branch HEAD, protection, and open PRs immediately before deletion; log each outcome and verify the branch is gone afterward.
+- Do not delete tags, GitHub Releases, forks, or unrelated active branches.
+
+For the initial cleanup, the allowlist contains the two old v3→v4 Dependabot branches replaced by the new pinned-actions workflow. If a future PR is closed without merging, **do not add it to the allowlist without examining whether its changes have already been incorporated**.
+
+The GitHub REST branch-deletion endpoint has no atomic conditional delete. Concurrent ref updates between the final check and deletion remain a theoretical race; limit the workflow to the default branch, keep the allowlist short, and prefer manual dry-run for unusually busy repositories.
+
+## Recovery and rollback
+
+**Partial release:** Semantic-release publishes the GitHub Release before the Docker images. If publishing fails, the GitHub release may exist without all expected registry tags. Never delete or force-move an existing SemVer tag to make CI pass.
+
+1. Record the failed workflow run, GitHub tag, target commit, and missing registry tags. Review the exact cause (permissions, registry outage, manifest failure, or package issue).
+2. Rebuild/re-push the missing image **from the exact released commit** after reviewing it and using authorized registry credentials, then verify the manifests and immutable digests.
+3. Document the repair. A workflow rerun may produce a **no-op** because semantic-release sees the existing tag; a green rerun alone is not proof that the registry was repaired.
+4. If the released code itself is defective, create a new corrective Conventional Commit and release a higher patch version. Do not rewrite published history.
+
+**Application rollback:** deploy a previously verified digest. Rolling back a moving `latest` tag manually should be a conscious, documented release operation rather than an unreviewed workflow side effect.
+
+**Dependency conflict:** close or defer the incompatible PR, record the version constraint, and add an integration test that would expose the regression. Prefer explicit version pinning over allowing a speculative major change into the publishing pipeline.
+
+## Required repository settings
+
+- Require status checks for the static and both architecture CI jobs before merging changes to `master`.
+- Prefer squash merges that preserve Conventional Commit descriptions and breaking-change footers.
+- Keep default-branch GitHub Actions permissions minimal and apply write permissions only to the release and housekeeping jobs.
+- Review the optional Docker Hub secrets and GHCR visibility when rotating credentials.
+- Keep the repository's branch protection/rulesets and secret-scanning options under maintainer control. These settings cannot be enforced merely by adding Markdown files.
+
+## Local quality gate
 
 ```sh
 sh -n install_nix.sh tests/*.sh
 shellcheck --shell=sh install_nix.sh tests/*.sh
 sh tests/test-installer.sh
-node scripts/check-release.mjs
-docker build -t alpine-nix:test .
+node --test tests/branch-cleanup.test.mjs
+npm install --ignore-scripts --no-audit --no-fund
+npm run test:release
+npm run test:release-notes
+docker build --tag alpine-nix:test .
 docker run --rm -i alpine-nix:test sh -s < tests/smoke.sh
 ```
 
-The release tooling itself uses Node.js 24 in CI and is **not installed inside the container image**. Registry publication only occurs after the default-branch workflow passes validation.
-
-For architecture and risk assumptions, see [ARCHITECTURE.md](ARCHITECTURE.md). For disclosure guidance, see [../SECURITY.md](../SECURITY.md).
+GitHub CI additionally validates workflow syntax with Actionlint and executes platform-specific builds and smoke tests. Node.js is only a release-management dependency, not part of the final image. See the [architecture document](ARCHITECTURE.md) and [security policy](../SECURITY.md).

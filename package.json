@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test:release": "node scripts/check-release.mjs",
-    "release": "semantic-release"
+    "release": "semantic-release",
+    "test:release-notes": "node scripts/check-release-notes.mjs"
   },
   "devDependencies": {
     "@semantic-release/exec": "7.1.0",

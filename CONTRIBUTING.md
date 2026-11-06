@@ -1,13 +1,55 @@
 # Contributing
 
-Contributions should keep the image minimal, easy to audit, and reproducible to the extent supported by Alpine package repositories.
+Thanks for helping keep Alpine + Nix small, trustworthy, and maintainable. All work is reviewed through GitHub pull requests against `master`. The repository uses SemVer, pinned GitHub Actions, and a deliberately conservative dependency and branch-maintenance policy.
 
-1. Open a focused pull request explaining the problem, security or compatibility trade-offs, and expected behavior.
-2. Run `sh -n install_nix.sh tests/*.sh`, `shellcheck --shell=sh install_nix.sh tests/*.sh`, `sh tests/test-installer.sh`, and `node scripts/check-release.mjs`.
-3. Run `docker build -t alpine-nix:test .` followed by `docker run --rm -i alpine-nix:test sh -s < tests/smoke.sh`.
-4. Update `README.md` and `SECURITY.md` for changes to the installation, user permissions, supported platforms, or trust model.
-5. Prefer Alpine stable-repository updates to opaque install scripts. Avoid adding registry credentials to pull-request workflows.
-6. Use **Conventional Commit** titles (`fix:`, `feat:`, or `feat!:` with a `BREAKING CHANGE:` footer). Squash merges must preserve the intended SemVer impact. See [the release handbook](docs/RELEASING.md).
-7. Dependency bumps are proposed monthly by Dependabot but are never auto-merged. Review major updates and keep package changes separate from unrelated refactors.
+## Before starting
 
-CI verifies both amd64 and arm64 images. Do not claim platform support based solely on shell syntax checks.
+1. Search existing [issues](https://github.com/redoracle/nixos/issues) and PRs. Use the provided issue templates for bugs or enhancements.
+2. For a security-sensitive discovery, follow [SECURITY.md](SECURITY.md) instead of publishing exploit details.
+3. Keep PRs focused, explain design trade-offs, and update relevant documentation and test coverage. Avoid new root privileges or remote shell installers without a compelling, reviewed rationale.
+4. Never commit secrets, API tokens, Docker registry credentials, or real vulnerability payloads.
+
+## Development checks
+
+Required local checks:
+
+```sh
+sh -n install_nix.sh tests/*.sh
+shellcheck --shell=sh install_nix.sh tests/*.sh
+sh tests/test-installer.sh
+node --test tests/branch-cleanup.test.mjs
+npm install --ignore-scripts --no-audit --no-fund
+npm run test:release
+npm run test:release-notes
+docker build -t alpine-nix:test .
+docker run --rm -i alpine-nix:test sh -s < tests/smoke.sh
+```
+
+GitHub Actions also runs [Actionlint](https://github.com/rhysd/actionlint), verifies shell and release maintenance behavior, and builds/smoke-tests **both** AMD64 and ARM64 images. Do not claim that a Docker or Nix change is fully verified until both architecture jobs pass.
+
+Node.js tooling is for repository maintenance only. The shipped container does not contain npm/Node.js.
+
+## PR and commit conventions
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) for PR titles and squash merges:
+
+- `fix:` and `fix(deps):` for patch releases
+- `feat:` for a backward-compatible minor release
+- `feat!:` plus a `BREAKING CHANGE:` footer for a major release
+- `docs:`, `test:` or `chore:` for maintenance without a release by default
+
+Explain user-visible behavior, security impact, tests, risks, migration instructions, and rollback plans in the pull-request template. Preserve the Conventional Commit title and footer when squash-merging; semantic-release reads the resulting history on `master`.
+
+## Dependencies and releases
+
+Dependabot checks the Docker base, GitHub Actions, and npm release tooling monthly, but **does not auto-merge**. Review release notes, major-version changes, SHA pins, and both platform checks before accepting updates.
+
+Do not lift an explicit Dependabot compatibility exclusion without demonstrating the associated release-notes integration test passes. GitHub Releases and Docker images publish **only** from the default branch after passing CI; PRs never receive publishing credentials. See [docs/RELEASING.md](docs/RELEASING.md) for operational detail.
+
+## Branch hygiene
+
+Branches associated with merged PRs may be removed automatically after a successful merge. The workflow only considers exact matching merged PR heads, or a small explicit allowlist of closed PRs whose changes are demonstrably superseded. Protected branches, `master` and open PR heads are excluded. Keep unmerged work that still matters; consult the housekeeping runbook before making manual changes to the allowlist.
+
+## Documentation standards
+
+Use precise Nix vs. NixOS terminology. Distinguish observed CI verification from untested assumptions. Keep `README.md`, [architecture](docs/ARCHITECTURE.md), [release handbook](docs/RELEASING.md), and [security policy](SECURITY.md) synchronized with changes to the software and workflows. Do not promise image-signing, immutable builds, or production security guarantees that the project does not implement.

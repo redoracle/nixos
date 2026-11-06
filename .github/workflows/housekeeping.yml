@@ -1,0 +1,51 @@
+name: Repository housekeeping
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    # Also review inactive merged branches monthly.
+    - cron: "43 4 2 * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview eligible cleanup without deleting branch refs"
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: branch-housekeeping
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Safely prune merged and superseded branches
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Test branch eligibility safeguards
+        run: node --test tests/branch-cleanup.test.mjs
+
+      - name: Prune eligible branch refs
+        run: node scripts/cleanup-branches.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CLEANUP_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}

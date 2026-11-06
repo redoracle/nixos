@@ -1,53 +1,108 @@
-# Architecture and trust boundaries
+# Architecture and engineering decisions
 
-## Scope
+This document describes the system **as built and verified**, its trust boundaries, and its deliberate non-goals. The repository name is historical: this is **not a NixOS distribution**, but Alpine Linux with Alpine's packaged Nix command-line tools.
 
-This project provides **Alpine Linux with the Nix package manager**. It does not provide the NixOS operating system, systemd, or the NixOS module system.
-
-### Image build
-
-1. Docker BuildKit pulls `alpine:3.24.4`.
-2. Alpine `apk` installs `bash`, `ca-certificates`, and Alpine's `nix` package from the image's configured signed package repositories.
-3. The Dockerfile creates `nixuser` (UID/GID 10001) and a writable `/nix` store, with no sudo.
-4. Nix is configured for **single-user** operation and unprivileged container execution. `nix-store --init` initializes the store and basic evaluation is smoke-tested at build time.
-5. The final image uses `nixuser` as its default user.
-
-### Local verification
-
-`tests/test-installer.sh` checks that the manual installer rejects unsupported inputs without invoking `apk`. `tests/smoke.sh` checks identity, writable Nix store, expression evaluation, adding an item to the store, and store verification.
-
-Pull-request CI runs ShellCheck and both `linux/amd64` and `linux/arm64` image smoke tests. The release workflow invokes the same checks before creating any release.
-
-### Release/data flow
+## System overview
 
 ```text
-Dependabot (monthly) ---> reviewable dependency PR
-                                      |
-conventional commit / merged PR ---> master
-                                      |
-                   CI lint + amd64/arm64 build/smoke
-                                      |
-                          semantic-release
-                                      |
-                        Git tag + GitHub Release
-                                      |
-                 multi-arch image build / publish
-                             /               \
-                GHCR (required)      Docker Hub (optional)
-                                      |
-                       check published GHCR manifest
+                    Pull request / Dependabot
+                               |
+                  static checks + release notes
+                               |
+                    Buildx image smoke tests
+                       /             \
+                 linux/amd64       linux/arm64
+                       \             /
+                        reviewed master
+                               |
+                   semantic-release (SemVer)
+                               |
+                   Git tag + GitHub Release
+                               |
+                  multi-platform Docker image
+                     /                 \
+                GHCR (primary)      Docker Hub (optional)
+                     |
+            Verify published arch manifest
+
+         Separately: closed PRs -> guarded branch housekeeping
 ```
 
-The monthly release workflow also runs verification when there are **no new commits**. Semantic-release correctly emits **no new version** when there is no releasable conventional commit. Dependencies are not automatically merged, and monthly checks do not silently retag previous releases.
+### Runtime image
 
-## Security boundaries
+- **Base:** pinned Alpine stable patch tag (`alpine:3.24.4` at the time of this document).
+- **Dependencies:** `bash`, `ca-certificates` and `nix` installed through Alpine's signed repositories. Nix's remaining runtime dependencies come from `apk`.
+- **User:** `nixuser` (UID/GID 10001) runs without sudo or root privileges.
+- **Store:** `/nix/store` and `/nix/var/nix` are created before `nix-store --init`. The image uses a **single-user local store** rather than requiring a privileged daemon. The smoke test asserts a writable, initialized store, adds an object, and verifies it.
+- **Configuration:** the user-specific `nix.conf` enables the `nix-command` and `flakes` features, disables the Nix build sandbox, and clears the multi-user build group.
+- **Entrypoint:** interactive Bash. No init system, external network service, host daemon, or Docker socket is part of the image.
 
-- **Host vs. image:** user namespaces and Nix sandboxing inside ordinary containers are often unavailable, so `sandbox = false` is an explicit image-level compromise. Only build trusted derivations.
-- **Package trust:** `apk` verifies Alpine repository metadata, but repository contents may change; this is not a bit-for-bit reproducible image.
-- **Image identity:** release images are built for two architectures with provenance and SBOM enabled. Prefer digest-qualified images in deployment.
-- **Secrets:** PR checks use only read permissions. Only the default-branch release job receives write permissions. Docker Hub credentials are optional and never shared with PR jobs.
-- **Lifecycle:** image registry publishing and GitHub Releases run in one workflow. If registry push fails after a GitHub Release was created, the failed run must be investigated and the images repaired; the existing Git tag is not automatically re-released.
+The initial implementation failed because Nix fell back to a per-user chroot store when `/nix/var/nix` was absent. The image and smoke tests now require the intended real `/nix` store.
 
-## Non-goals and possible enhancements
+### Manual Alpine host installation
 
-There is no embedded init system, privileged multi-user daemon, production security certification, or guarantee of reproducibility across time. Further hardening could pin a base-image digest, add mandatory dependency vulnerability scanning, sign release image digests via OIDC, and use a release environment with required reviewers.
+`install_nix.sh` only installs the distribution's `nix` and `nix-openrc` packages after checking the host OS and privileges. It intentionally does not rewrite an existing Nix store or enable the OpenRC daemon. Host installations have different privileges and lifecycle requirements from the container.
+
+## Development and verification
+
+`.github/workflows/ci.yml` is triggered for pull requests and reused by the default-branch release workflow. It runs:
+
+1. Actionlint validation of GitHub Actions workflows.
+2. POSIX shell parsing, ShellCheck, and installer contract checks.
+3. Release configuration tests and **actual** Conventional Commits release-notes generation, to catch incompatible npm dependency updates.
+4. Unit tests for branch-cleanup eligibility.
+5. A Buildx image build and Nix store smoke test on each supported architecture.
+
+A successful lint-only check is **not** sufficient to verify the container. Docker build and smoke tests for `linux/amd64` and `linux/arm64` are distinct required checks.
+
+The image does not contain the Node.js toolchain. Node.js 24 is used by GitHub CI/release maintenance jobs only.
+
+## Delivery and maintenance
+
+### Release flow
+
+`.github/workflows/release.yml` runs on merges to `master`, scheduled monthly validation, and manual dispatch:
+
+1. Reuse the complete CI verification workflow, with read-only permissions.
+2. Allow the default-branch release job write permissions for GitHub Releases and GHCR.
+3. Resolve Conventional Commits using semantic-release. A releasable change produces a new `vMAJOR.MINOR.PATCH` tag and GitHub Release.
+4. Build/push a multi-architecture image with versioned and moving tags, plus SBOM/provenance metadata.
+5. Verify that the GHCR manifest advertises AMD64 and ARM64.
+
+If no commit warrants a release, no version or Docker tag is invented. Existing tags, including the historical invalid `v` tag, remain untouched.
+
+A limitation remains: a GitHub Release is created **before** the registry push, so registry failure can leave a partially delivered release. The [releasing runbook](RELEASING.md) documents recovery without moving tags.
+
+### Dependency updates
+
+Dependabot proposes monthly updates for the Docker base, GitHub Actions, and npm release tooling. Updates are reviewed, **not automatically merged**. The conventional-changelog preset's next major is currently deferred because the release-notes generator/writer compatibility must be tested end to end. CI runs the same release-notes generation path used by production.
+
+### Repository housekeeping
+
+`.github/workflows/housekeeping.yml` invokes `scripts/cleanup-branches.mjs`. The script:
+
+- Enumerates PRs and refs, preserving the default branch and every protected branch.
+- Selects only exact matching HEADs of **merged** PRs from this repository, plus a short, reviewed SHA allowlist of explicitly superseded closed PRs.
+- Refuses branches referenced by any open PR; re-fetches HEAD/protection/open-PR status just before deletion.
+- Logs and verifies deletions. A manual dry-run mode allows reviewing the proposed operation.
+
+Other closed but unmerged PR branches are **not** deleted automatically. Git tags and releases are never touched. Like the GitHub REST API itself, deletion cannot provide a fully atomic compare-and-delete lease; the live rechecks minimize—but cannot completely eliminate—a concurrent branch-write race.
+
+## Security and reliability boundaries
+
+| Boundary | Current guarantee and limitation |
+| --- | --- |
+| Registry content | Alpine `apk` uses distribution-managed signed repositories; stable indexes can change between builds |
+| Build isolation | Nix sandboxing is **disabled** inside the container; only run trusted derivations |
+| Process privileges | UID/GID 10001 in the final container; this does not replace runtime policy, network controls, or rootless container hosting |
+| Local storage | `/nix` is writable to the Nix user; do not share a writable store across different trust domains |
+| CI credentials | PR checks receive read-only token permissions and no container registry secrets; only master release and branch housekeeping jobs obtain scoped write permissions |
+| Release identity | Semantic version tags and image manifest checks; full end-to-end atomicity across GitHub Releases and container registries is **not** provided |
+| Reproducibility | Published image digests are immutable references; source builds with moving Alpine repositories or unlocked flakes are not bit-reproducible |
+| Supply chain | Images request SBOM and provenance, but no independent signature enforcement, admission policy, or automatic vulnerability exception process is claimed |
+
+## Non-goals and future work
+
+This project does not implement NixOS modules, a production multi-user Nix daemon, a privileged container, or complete sandbox isolation.
+
+Possible future work includes OCI base-image digest pinning with verified update automation, digest signature verification, runtime vulnerability scanning, Nix input lockfiles for example workloads, and a two-stage release protocol that publishes images *before* finalizing a GitHub Release. Each change should have an explicit security/maintenance trade-off and multi-architecture CI evidence.
