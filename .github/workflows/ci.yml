@@ -44,6 +44,11 @@ jobs:
         run: npm ls --depth=0
       - name: Verify release-notes generation and compatibility
         run: npm run test:release-notes
+      - name: Generate an auditable npm lock for optional Pi dependencies
+        run: |
+          cd ai
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node -e 'const fs=require("node:fs"); console.log("AI_NPM_LOCK_B64:" + fs.readFileSync("package-lock.json").toString("base64"))'
       - name: Validate maintenance and release scripts
         run: |
           node --check scripts/prepare-release.mjs
@@ -97,3 +102,5 @@ jobs:
         run: docker run --rm -i alpine-nix-pi:ci sh -s < tests/pi-smoke.sh
       - name: Verify real Pi RPC extension discovery and slash command
         run: docker run --rm -i alpine-nix-pi:ci node --input-type=module - < tests/pi-rpc-smoke.mjs
+      - name: Verify complete Pi/Needle tool-calling conversation with deterministic local provider
+        run: docker run --rm -i alpine-nix-pi:ci node --input-type=module - < tests/pi-agent-conversation.mjs
