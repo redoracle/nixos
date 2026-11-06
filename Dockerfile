@@ -11,7 +11,7 @@ LABEL org.opencontainers.image.title="Alpine + Nix" \
 RUN apk add --no-cache bash ca-certificates nix \
     && addgroup -S -g 10001 nixuser \
     && adduser -S -D -u 10001 -G nixuser -h /home/nixuser -s /bin/bash nixuser \
-    && mkdir -p /nix /home/nixuser/.config/nix \
+    && mkdir -p /nix/store /nix/var/nix /home/nixuser/.config/nix \
     && printf '%s\n' \
        '# Containers normally lack the user namespaces required for Nix builds.' \
        'sandbox = false' \
