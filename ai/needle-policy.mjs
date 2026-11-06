@@ -191,7 +191,9 @@ async function trustedExecutable(name) {
         (info.mode & 0o022) !== 0 || (info.mode & 0o111) === 0) {
       throw new Error('Executable is not a trusted root-owned binary');
     }
-    return target;
+    // Preserve the original absolute applet pathname: BusyBox uses argv[0]
+    // (for example /usr/bin/id), not the resolved /bin/busybox target.
+    return join(dir, name);
   }
   throw new Error(`Approved executable not found: ${name}`);
 }
