@@ -21,9 +21,12 @@ RUN cd /opt/pi-needle \
     && npm install --ignore-scripts --omit=dev --no-audit --no-fund \
     && ln -s /opt/pi-needle/node_modules/.bin/pi /usr/local/bin/pi
 
-COPY ai/needle-cli.mjs ai/needle-policy.mjs ai/needle-tools.json /opt/pi-needle/
+COPY ai/needle-cli.mjs ai/needle-engine.mjs ai/needle-policy.mjs ai/needle-pi-extension.js ai/needle-tools.json /opt/pi-needle/
 RUN chmod 755 /opt/pi-needle/needle-cli.mjs \
     && ln -s /opt/pi-needle/needle-cli.mjs /usr/local/bin/needle-cli \
+    && mkdir -p /home/nixuser/.pi/agent \
+    && printf '%s\n' '{"extensions":["/opt/pi-needle/needle-pi-extension.js"]}' > /home/nixuser/.pi/agent/settings.json \
+    && chown -R nixuser:nixuser /home/nixuser/.pi \
     && chown -R root:root /opt/pi-needle
 
 USER nixuser
@@ -36,6 +39,6 @@ WORKDIR /workspace
 # Runtime does not need a model download if this succeeds.
 RUN node /opt/pi-needle/needle-cli.mjs --download
 
-# Pi is the default interactive UI; Needle is an independent local function
-# router, NOT a substitute for Pi's reasoning model/provider.
+# Pi automatically loads the read-only Needle routing extension. Needle does NOT
+# replace Pi's reasoning provider or constrain Pi's independent native bash tool.
 CMD ["pi"]

@@ -54,10 +54,13 @@ jobs:
           node --test tests/branch-cleanup.test.mjs tests/pi-needle.test.mjs
           node --check ai/needle-policy.mjs
           node --check ai/needle-cli.mjs
+          node --check ai/needle-engine.mjs
+          node --check ai/needle-pi-extension.js
 
   container:
     name: Container ${{ matrix.platform }}
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -79,3 +82,5 @@ jobs:
             --tag alpine-nix-pi:ci .
       - name: Smoke-test Pi and offline Needle inference
         run: docker run --rm -i alpine-nix-pi:ci sh -s < tests/pi-smoke.sh
+      - name: Execute every catalog entry under the unprivileged image user
+        run: docker run --rm -i alpine-nix-pi:ci node --input-type=module - < tests/pi-catalog-smoke.mjs

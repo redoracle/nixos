@@ -1,113 +1,255 @@
-import { realpath, lstat, readdir, readFile, writeFile } from 'node:fs/promises';
-import { resolve, dirname, relative, isAbsolute } from 'node:path';
+import { lstat, realpath, readdir, readFile, open } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
-import { execFile as callbackExecFile } from 'node:child_process';
+import { resolve, dirname, relative, isAbsolute, basename } from 'node:path';
 
-const execFile = promisify(callbackExecFile);
+const execFile = promisify(execFileCallback);
+const MAX_OUTPUT = 65536;
+const MAX_FILES = 100;
+const MAX_READ = 16384;
+const MAX_HASH = 1048576;
 
-export function validateCall(call, catalog) {
-  if (!call || typeof call !== 'object' || Array.isArray(call)) {
-    throw new TypeError('Tool call must be an object');
+// Exact, independently reviewed command signatures. A changed catalog cannot
+// silently turn read-only inspection into an apk install or Nix build.
+const SAFE = Object.freeze({
+  system_identity:['id'], system_arch:['uname','-m'],
+  system_kernel:['uname','-a'], system_disk:['df','-h','/nix'],
+  alpine_release:['cat','/etc/alpine-release'],
+  node_version:['node','--version'],
+  apk_version:['apk','--version'], apk_installed:['apk','info'],
+  apk_info:['apk','info','-a','{package}'],
+  apk_dependencies:['apk','info','-R','{package}'],
+  apk_required_by:['apk','info','-r','{package}'],
+  apk_files:['apk','info','-L','{package}'],
+  apk_search:['apk','search','{package}'],
+  apk_policy:['apk','policy','{package}'],
+  apk_stats:['apk','stats'],
+  apk_repositories:['cat','/etc/apk/repositories'],
+  apk_world:['cat','/etc/apk/world'],
+  apk_audit:['apk','audit','--system'],
+  nix_version:['nix','--version'],
+  nix_eval_selftest:['nix-instantiate','--eval','--expr','1 + 1'],
+  nix_config:['nix','show-config'],
+  nix_registry:['nix','registry','list'],
+  nix_store_verify:['nix-store','--verify'],
+  nix_store_roots:['nix-store','--gc','--print-roots'],
+  nix_store_dead:['nix-store','--gc','--print-dead'],
+  nix_store_live:['nix-store','--gc','--print-live'],
+  nix_store_references:['nix-store','-q','--references','{store_path}'],
+  nix_store_referrers:['nix-store','-q','--referrers','{store_path}'],
+  nix_store_requisites:['nix-store','-q','--requisites','{store_path}'],
+  nix_store_deriver:['nix-store','-q','--deriver','{store_path}'],
+  nix_store_size:['nix-store','-q','--size','{store_path}'],
+  nix_store_hash:['nix-store','-q','--hash','{store_path}'],
+  nix_store_path_info:['nix','path-info','--json','{store_path}'],
+  nix_profile_list:['nix','profile','list'],
+});
+
+export function validateCall(raw, catalog) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new TypeError('Tool call must be a JSON object');
   }
-  const definition = catalog.tools[call.name];
-  if (!definition) throw new Error(`Unknown Needle action: ${String(call.name)}`);
-  const args = call.arguments;
+  const name = raw.name ?? raw.toolName;
+  if (typeof name !== 'string' || !Object.hasOwn(catalog.tools, name)) {
+    throw new Error(`Unknown Needle action: ${String(name)}`);
+  }
+  let args = raw.arguments ?? raw.input;
+  if (typeof args === 'string') {
+    try { args = JSON.parse(args); } catch { throw new Error('Tool arguments are not JSON'); }
+  }
   if (!args || typeof args !== 'object' || Array.isArray(args)) {
-    throw new TypeError('arguments must be a JSON object');
+    throw new TypeError('Tool arguments must be a JSON object');
   }
-  const schema = definition.inputSchema;
-  for (const key of schema.required ?? []) {
-    if (!Object.hasOwn(args, key)) throw new Error(`Missing required argument: ${key}`);
+  const schema = catalog.tools[name].inputSchema;
+  if (schema.type !== 'object' || schema.additionalProperties !== false) {
+    throw new Error('Invalid catalog schema');
   }
-  for (const [key, value] of Object.entries(args)) {
-    const prop = schema.properties[key];
-    if (!prop) throw new Error(`Unexpected argument: ${key}`);
-    if (typeof value !== prop.type) throw new TypeError(`Invalid type for ${key}`);
-    if (typeof value === 'string') {
-      if (prop.minLength !== undefined && value.length < prop.minLength) {
-        throw new Error(`Argument too short: ${key}`);
-      }
-      if (prop.maxLength !== undefined && value.length > prop.maxLength) {
-        throw new Error(`Argument too long: ${key}`);
-      }
-      if (prop.enum && !prop.enum.includes(value)) {
-        throw new Error(`Unsupported value for ${key}`);
-      }
+  for (const field of schema.required ?? []) {
+    if (!Object.hasOwn(args, field)) throw new Error(`Missing required argument: ${field}`);
+  }
+  for (const [field, value] of Object.entries(args)) {
+    if (!Object.hasOwn(schema.properties, field)) {
+      throw new Error(`Unexpected argument: ${field}`);
+    }
+    const spec = schema.properties[field];
+    if (spec.type !== 'string' || typeof value !== 'string') {
+      throw new TypeError(`Invalid argument type: ${field}`);
+    }
+    if (spec.minLength !== undefined && value.length < spec.minLength) {
+      throw new Error(`Argument too short: ${field}`);
+    }
+    if (spec.maxLength !== undefined && value.length > spec.maxLength) {
+      throw new Error(`Argument too long: ${field}`);
+    }
+    if (spec.pattern && !new RegExp(spec.pattern).test(value)) {
+      throw new Error(`Invalid argument format: ${field}`);
+    }
+    if (value.includes('\0')) throw new Error('NUL bytes are not permitted');
+    if (field === 'project' || field === 'installable') {
+      if (/[\n\r;|&`$<>]/.test(value)) throw new Error('Untrusted input characters in advisory arguments');
     }
   }
-  return { name: call.name, arguments: args };
+  return { name, arguments: args };
 }
 
-function inside(root, target) {
-  const rel = relative(root, target);
-  return rel === '' || (rel !== '..' && !rel.startsWith('../') && !isAbsolute(rel));
+function isInside(root, path) {
+  const rel = relative(root, path);
+  return !isAbsolute(rel) && rel !== '..' && !rel.startsWith('../');
 }
 
-export async function checkedWorkspacePath(root, input, { create = false } = {}) {
+const DENY_NAMES = /(^\.|^id_rsa|\.key$|\.pem$|secret|token|password|credential|private|api[-_]?key|\.env)/i;
+export async function checkedWorkspacePath(root, input, { create = false, file = false } = {}) {
   if (typeof input !== 'string' || !input || input.includes('\0') || isAbsolute(input)) {
-    throw new Error('Use a nonempty relative workspace path');
+    throw new Error('A nonempty relative workspace path is required');
   }
   const realRoot = await realpath(root);
-  const target = resolve(realRoot, input);
-  if (!inside(realRoot, target)) throw new Error('Path escapes /workspace');
-  if (!create) {
-    const realTarget = await realpath(target);
-    if (!inside(realRoot, realTarget)) throw new Error('Symlink escapes /workspace');
-    return realTarget;
+  const candidate = resolve(realRoot, input);
+  if (!isInside(realRoot, candidate)) throw new Error('Path escapes workspace');
+  if (file || create) {
+    for (const segment of relative(realRoot, candidate).split('/')) {
+      if (DENY_NAMES.test(segment)) throw new Error('Sensitive or hidden file names are not readable/writable through Needle');
+    }
   }
-  const realParent = await realpath(dirname(target));
-  if (!inside(realRoot, realParent)) throw new Error('Parent symlink escapes /workspace');
-  // Require the final pathname not to exist, including a symlink.
+  if (create) {
+    const parent = await realpath(dirname(candidate));
+    if (!isInside(realRoot, parent)) throw new Error('Parent symlink escapes workspace');
+    // open(..., "wx") is atomic for final-component non-overwrite.
+    return candidate;
+  }
+  const resolved = await realpath(candidate);
+  if (!isInside(realRoot, resolved)) throw new Error('Symlink escapes workspace');
+  return resolved;
+}
+
+function commandPreview(entry, args) {
+  return entry.commandPreview.map(item => item.replace(/\{(package|store_path|project|installable|file|path)\}/g,
+    (match, field) => args[field] ?? (field === 'path' ? '.' : match)));
+}
+export function planCall(call, catalog) {
+  const valid = validateCall(call, catalog);
+  const entry = catalog.tools[valid.name];
+  const argv = commandPreview(entry, valid.arguments);
+  return {
+    name: valid.name, category: entry.category, mode: entry.mode, argv,
+    executed: false,
+    message: entry.mode === 'manual'
+      ? 'Advisory only: never executed by Needle; review and run manually outside this router'
+      : entry.mode === 'write'
+        ? 'Requires both --execute and --allow-write; only creates a new file'
+        : 'Read-only; explicit --execute needed to run',
+  };
+}
+
+async function runCommand(name, entry, args, { workspace }) {
+  const signature = SAFE[name];
+  if (!signature || JSON.stringify(entry.commandPreview) !== JSON.stringify(signature)) {
+    throw new Error(`Denied: command signature for ${name} is not in the reviewed allowlist`);
+  }
+  const [bin, ...argv] = commandPreview(entry, args);
+  if (args.store_path) {
+    // Do not query arbitrary absent paths or unusual symlinks inside the store.
+    const realStorePath = await realpath(args.store_path);
+    if (realStorePath !== args.store_path) throw new Error('Refusing redirected Nix store path');
+  }
+  const opts = {
+    cwd: workspace, timeout: 30000, maxBuffer: 256 * 1024,
+    env: {
+      PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+      HOME: process.env.HOME ?? '/home/nixuser',
+      USER: process.env.USER ?? 'nixuser',
+    },
+  };
   try {
-    await lstat(target);
-    throw new Error('Refusing to replace an existing path');
+    const { stdout, stderr } = await execFile(bin, argv, opts);
+    return { ok: true, exitCode: 0,
+      stdout: stdout.slice(0, MAX_OUTPUT),
+      stderr: stderr.slice(0, MAX_OUTPUT) };
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    const code = Number.isInteger(error.code) ? error.code : null;
+    const diagnostic = name === 'apk_audit' && code === 99;
+    return {
+      ok: diagnostic, exitCode: code,
+      stdout: String(error.stdout ?? '').slice(0, MAX_OUTPUT),
+      stderr: String(error.stderr ?? error.message).slice(0, MAX_OUTPUT),
+      diagnostic, timeout: Boolean(error.killed),
+    };
   }
-  return target;
 }
 
-async function fixedCheck(command, args) {
-  const { stdout, stderr } = await execFile(command, args, {
-    cwd: '/workspace',
-    timeout: 15000,
-    maxBuffer: 128 * 1024,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, USER: process.env.USER },
-  });
-  return (stdout + stderr).slice(0, 65536).trim();
+async function getSafeFile(workspace, value, { limit }) {
+  const file = await checkedWorkspacePath(workspace, value, { file: true });
+  const meta = await lstat(file);
+  if (!meta.isFile()) throw new Error('Only regular workspace files can be read or hashed');
+  if (meta.size > limit) throw new Error(`File exceeds ${limit}-byte limit`);
+  return { file, meta };
 }
 
-export async function executeAllowed(call, { workspace = '/workspace', allowWrite = false } = {}) {
-  const args = call.arguments;
-  switch (call.name) {
-    case 'nix_version':
-      return fixedCheck('nix', ['--version']);
-    case 'run_safe_check':
-      if (args.check === 'nix-store-verify') return fixedCheck('nix-store', ['--verify']);
-      if (args.check === 'nix-eval-test') return fixedCheck('nix-instantiate', ['--eval', '--expr', '1 + 1']);
-      if (args.check === 'node-version') return fixedCheck('node', ['--version']);
-      throw new Error('Unknown diagnostic');
-    case 'list_workspace': {
-      const path = await checkedWorkspacePath(workspace, args.path ?? '.');
-      const listing = await readdir(path, { withFileTypes: true });
-      return listing.slice(0, 100).map((entry) => ({
-        name: entry.name,
-        type: entry.isDirectory() ? 'directory' : entry.isSymbolicLink() ? 'symlink' : 'file',
-      }));
-    }
-    case 'read_workspace_file': {
-      const path = await checkedWorkspacePath(workspace, args.path);
-      const { size } = await lstat(path);
-      if (size > 16384) throw new Error('File exceeds the 16 KiB read limit');
-      return readFile(path, 'utf8');
-    }
-    case 'write_workspace_file': {
-      if (!allowWrite) throw new Error('Writing requires both --execute and --allow-write');
-      const path = await checkedWorkspacePath(workspace, args.path, { create: true });
-      await writeFile(path, args.content, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-      return { created: args.path, bytes: Buffer.byteLength(args.content, 'utf8') };
-    }
-    default:
-      throw new Error('Unknown action');
+async function executeWorkspace(name, args, { workspace, allowWrite }) {
+  if (name === 'workspace_list') {
+    const path = await checkedWorkspacePath(workspace, args.path ?? '.');
+    const entries = await readdir(path, { withFileTypes: true });
+    return { ok: true, entries: entries.slice(0, MAX_FILES).map(e => ({
+      name: e.name, type: e.isDirectory() ? 'directory' : e.isSymbolicLink() ? 'symlink' : 'file'
+    })), truncated: entries.length > MAX_FILES };
   }
+  if (name === 'workspace_stat') {
+    const path = await checkedWorkspacePath(workspace, args.path);
+    const meta = await lstat(path);
+    return { ok: true, kind: meta.isFile() ? 'file' : meta.isDirectory() ? 'directory' : 'other',
+      bytes: meta.size, mode: (meta.mode & 0o777).toString(8) };
+  }
+  if (name === 'workspace_read') {
+    const { file } = await getSafeFile(workspace, args.file, { limit: MAX_READ });
+    return { ok: true, text: await readFile(file, 'utf8') };
+  }
+  if (name === 'workspace_hash') {
+    const { file } = await getSafeFile(workspace, args.file, { limit: MAX_HASH });
+    const digest = createHash('sha256').update(await readFile(file)).digest('hex');
+    return { ok: true, sha256: digest };
+  }
+  if (name === 'workspace_create') {
+    if (!allowWrite) throw new Error('File creation requires --execute and --allow-write');
+    const path = await checkedWorkspacePath(workspace, args.path, { create: true });
+    const handle = await open(path, 'wx', 0o600);
+    try { await handle.writeFile(args.content, 'utf8'); } finally { await handle.close(); }
+    return { ok: true, created: args.path, bytes: Buffer.byteLength(args.content, 'utf8') };
+  }
+  throw new Error('Workspace action is not implemented');
+}
+
+const WORKFLOWS = Object.freeze({
+  workflow_system_audit:['system_identity','system_arch','alpine_release','nix_version','system_disk'],
+  workflow_dependency_audit:['apk_version','apk_installed','nix_version'],
+  workflow_nix_health:['nix_eval_selftest','nix_store_verify'],
+});
+
+export async function executeAllowed(call, {
+  catalog, workspace = '/workspace', execute = false, allowWrite = false
+} = {}) {
+  if (!catalog) throw new Error('Explicit catalog is required');
+  const valid = validateCall(call, catalog);
+  const entry = catalog.tools[valid.name];
+  const preview = planCall(valid, catalog);
+  if (entry.mode === 'manual') return preview;
+  if (!execute) return preview;
+  if (entry.mode === 'write' && !allowWrite) {
+    throw new Error('Mutating action requires both --execute and --allow-write');
+  }
+  if (Object.hasOwn(WORKFLOWS, valid.name)) {
+    const stages = [];
+    for (const name of WORKFLOWS[valid.name]) {
+      stages.push({ name, result: await executeAllowed({ name, arguments:{} },
+        { catalog, workspace, execute:true }) });
+    }
+    return { name: valid.name, mode:'readonly', executed:true,
+      ok: stages.every(x => x.result.ok), stages };
+  }
+  if (entry.category === 'workspace') {
+    return { name: valid.name, mode:entry.mode, executed:true,
+      ...await executeWorkspace(valid.name, valid.arguments, { workspace, allowWrite }) };
+  }
+  if (entry.mode !== 'readonly') throw new Error('Unsupported execution mode');
+  return { name: valid.name, mode:entry.mode, executed:true,
+    ...await runCommand(valid.name, entry, valid.arguments, { workspace }) };
 }

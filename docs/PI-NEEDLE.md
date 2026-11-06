@@ -1,101 +1,152 @@
-# Optional Pi + Needle image (Alpine + Nix)
+# Pi + Needle variant: Alpine/Nix command catalog and security guide
 
-The default `Dockerfile` builds the minimal **vanilla Alpine + Nix** container. The opt-in [`Dockerfile.pi`](../Dockerfile.pi) builds a **second** image containing:
+The repository offers **two independently selectable image flavors**:
 
-- The existing Nix runtime and non-root UID 10001 store, unchanged.
-- [Pi](https://pi.dev/docs/latest/quickstart), installed as a pinned npm package, providing its standard interactive coding agent.
-- [Cactus Compute Needle 3](https://github.com/cactus-compute/needle), run locally using the [`cactus-needle` WebAssembly/Node runtime](https://github.com/afshinm/cactus-needle), prefetching its model weights during the build.
-- `needle-cli`, a conservative natural-language tool selector with an explicit JSON tool catalog, model proposals shown by default, and opt-in restricted execution.
+| Flavor | Dockerfile | GitHub Container Registry | Default command |
+| --- | --- | --- | --- |
+| Vanilla | [`Dockerfile`](../Dockerfile) | `ghcr.io/redoracle/nixos:vX.Y.Z` | `bash` |
+| Optional Pi + Needle | [`Dockerfile.pi`](../Dockerfile.pi) | `ghcr.io/redoracle/nixos-pi:vX.Y.Z` | `pi` |
 
-## Critical architecture distinction
+The Pi image derives from the same reviewed Alpine + Nix vanilla base, keeps UID/GID **10001**, and adds Node.js, Pi, local [Needle 3](https://www.cactuscompute.com/needle) WebAssembly inference and a guarded tool router. The vanilla image and its command behavior remain unchanged.
 
-**Needle is not a general-purpose language/reasoning model.** It is a small function-calling/extraction model. Running Pi's interactive coding agent still requires configuring a supported model provider or compatible separately served local reasoning model. Needle **does not automatically become Pi's chat model** and cannot autonomously perform arbitrary Pi coding workflows.
+> **Architectural boundary:** Needle is an on-device function selection model. It is **not a general chat/reasoning LLM**. The Pi coding agent still requires a separately configured provider or local language model. Pi's built-in `bash`, `write` and other tools are **not restricted** by the separate Needle JSON policy. Use only trusted prompts and projects with Pi; do not rely on a JSON catalog as a sandbox.
 
-The third-party [`pi-llm-bridge`](https://pi.dev/packages/pi-llm-bridge) is designed to route tool intents from an additional upstream model through a fine-tuned Needle model. It does **not** turn Needle into that upstream reasoning model. Its JAX/Python runtime is not installed here: normal upstream `jaxlib` wheels target glibc rather than Alpine's musl, and its complete Alpine/multiarch compatibility has not been proven. The independent Needle 3 WebAssembly path avoids that packaging assumption.
-
-## Build and choose either flavor
-
-### Vanilla (existing behavior, no AI dependencies)
+## Building the two image flavors
 
 ```sh
+# Minimal Alpine + Nix (no AI runtime)
 docker build -f Dockerfile -t alpine-nix:local .
+
+# Opt-in coding agent, derived from the same locally verified image
+docker build -f Dockerfile.pi \
+  --build-arg BASE_IMAGE=alpine-nix:local \
+  -t alpine-nix-pi:local .
+
+# Run vanilla:
 docker run --rm -it alpine-nix:local
+
+# Run Pi (configure its reasoning-model provider separately):
+docker run --rm -it \
+  --mount type=bind,src="$PWD",dst=/workspace \
+  alpine-nix-pi:local
 ```
 
-### Pi + Needle (opt-in)
+The image builds and caches the Needle weights **at build time** as `nixuser`. A normal running container should not require a second model download. Package and model provenance still depend on upstream distribution and are not guaranteed bit-for-bit reproducible without further pinned digests/lockfiles.
+
+## Pi extension: use Needle inside the agent
+
+The optional image configures `~/.pi/agent/settings.json` to load the local [`needle-pi-extension.js`](../ai/needle-pi-extension.js), registering the **`needle_route`** Pi tool.
+
+When Pi has a reasoning provider, you can ask:
+
+> Use needle_route to inspect the Alpine packages installed in this container, then explain what you found.
+
+The extension asks the offline Needle model to **propose** a validated action, and returns JSON suggestions to Pi. It **does not execute** the action. This is intentional: Pi's own reasoning-model tool calls and the model's preferred actions should be reviewed before state-changing work. For deterministic, constrained local execution, use `needle-cli` explicitly.
+
+Pi configuration: see [Pi's extension documentation](https://pi.dev/docs/latest/extensions) and [Pi quickstart](https://pi.dev/docs/latest/quickstart).
+
+## Needle CLI and JSON catalog
+
+The authoritative [`ai/needle-tools.json`](../ai/needle-tools.json) declares **60 named functions** across five groups. Every function includes a description, scope, safety mode, strict JSON input schema, constrained command preview and sample arguments. [`ai/needle-scenarios.json`](../ai/needle-scenarios.json) provides **35 natural-language examples** with sample expected tools.
+
+| Group | Catalog entries | Examples |
+| --- | ---: | --- |
+| `system` | 6 | UID/group, architecture, kernel, Alpine release, disk, Node |
+| `apk` | 17 | Version, installed packages, dependencies, reverse deps, files, indexed search, policy, audit, repositories, world file; advice for add/del/update/upgrade/fix |
+| `nix` | 27 | Version, safe fixed evaluation, configuration, flake registry, store verification/roots/live/dead/references/closure/size/hash, profile list; plans for flakes/builds/devshells/GC |
+| `workspace` | 5 | List, read, stat, SHA-256, create a new file |
+| `workflow` | 5 | System audit, dependency audit, Nix health, project audit plan, upgrade plan |
+
+There is no safe finite representation of **all** Nix or Alpine commands: both have advanced, potentially privileged or arbitrary-code-executing operations. This catalog deliberately covers inspectable actions and practical procedures without promising unrestricted execution.
+
+### Inspect and generate proposals (default: no execution)
 
 ```sh
-docker build -f Dockerfile -t alpine-nix:local .
-docker build -f Dockerfile.pi --build-arg BASE_IMAGE=alpine-nix:local -t alpine-nix-pi:local .
-docker run --rm -it --mount type=bind,src="$PWD",dst=/workspace alpine-nix-pi:local
+docker run --rm alpine-nix-pi:local needle-cli --health
+docker run --rm alpine-nix-pi:local needle-cli --catalog
+docker run --rm alpine-nix-pi:local needle-cli --scope nix \
+  "What version of Nix is installed?"
+docker run --rm alpine-nix-pi:local needle-cli --scope apk \
+  "Show the Alpine nix package dependencies"
+docker run --rm alpine-nix-pi:local needle-cli --scope workflow \
+  "How should I safely upgrade the Alpine packages and Nix version?"
 ```
 
-The Pi variant defaults to launching `pi`, as non-root `nixuser`. Configure a Pi provider using `/login`, or configure a local model serving endpoint as described in [Pi's documentation](https://pi.dev/docs/latest/quickstart). Pi may use its own `read`, `write`, `edit` and `bash` tools; those can modify files and execute commands within its container permissions.
+The `--scope` option limits the tools supplied to the model: `auto` (default), `system`, `apk`, `nix`, `workspace`, `workflow` or `all`. Use a focused scope for more predictable tool selection and to avoid oversized model context. **The model is probabilistic** and may emit no call or the wrong call. Never assume an example phrase deterministically selects a given function.
 
-To run a plain shell instead of Pi:
+### Execute a safe read-only catalog operation
 
 ```sh
-docker run --rm -it alpine-nix-pi:local bash
+docker run --rm alpine-nix-pi:local \
+  needle-cli --call-json '{"name":"apk_info","arguments":{"package":"nix"}}' --execute
+
+docker run --rm alpine-nix-pi:local \
+  needle-cli --call-json '{"name":"nix_store_verify","arguments":{}}' --execute
+
+docker run --rm alpine-nix-pi:local \
+  needle-cli --call-json '{"name":"workflow_nix_health","arguments":{}}' --execute
 ```
 
-## Use Needle for local natural-language tool routing
+Direct `--call-json` bypasses language-model selection **but not** the schema, safety mode, command allowlist or path controls. It is the exact deterministic entry point CI uses to validate each action.
 
-Needle is exposed through the separate `needle-cli` command. It accepts a natural language request and produces proposed **JSON function calls without executing them**:
+Natural-language execution is also possible:
 
 ```sh
-docker run --rm alpine-nix-pi:local needle-cli "What version of Nix is installed?"
+docker run --rm alpine-nix-pi:local \
+  needle-cli --scope nix --execute "Show me the Nix version"
 ```
 
-Allow execution of the narrowly scoped, predefined functions in [`ai/needle-tools.json`](../ai/needle-tools.json):
+Review the JSON proposal before allowing execution of model-selected functions. No arbitrary command string or dynamically generated shell is supported.
+
+### Explicitly allow new workspace files
 
 ```sh
-docker run --rm alpine-nix-pi:local needle-cli --execute "What version of Nix is installed?"
+docker run --rm \
+  --mount type=bind,src="$PWD",dst=/workspace \
+  alpine-nix-pi:local \
+  needle-cli --call-json \
+  '{"name":"workspace_create","arguments":{"path":"notes.txt","content":"Report ready"}}' \
+  --execute --allow-write
 ```
 
-The available function names and schemas are:
+Only files below `/workspace` can be accessed. Paths are normalized, escaping symlinks are rejected, sensitive/hidden filenames cannot be read or written through this interface, reads and hashes are size-capped, and file creation uses exclusive `wx` mode with permission `0600`. Existing files are never overwritten. These controls reduce risk, but they are not a substitute for isolating untrusted workloads or protecting concurrently modified mounts.
 
-| Name | Parameters | Behavior |
-| --- | --- | --- |
-| `nix_version` | none | Runs fixed `nix --version` |
-| `run_safe_check` | `check` enum | Runs one of three predefined diagnostics; never arbitrary shell |
-| `list_workspace` | optional relative `path` | Lists up to 100 directory entries under `/workspace` |
-| `read_workspace_file` | relative `path` | Reads up to 16 KiB of UTF-8 text, restricted to `/workspace` |
-| `write_workspace_file` | `path`, `content` | Creates a new UTF-8 file; requires `--execute --allow-write`, does not overwrite |
+### Deliberately non-executable operations
 
-For write operations, explicitly enable both execution and writing:
+The following catalog operations always return **review guidance only**, even if both execution flags are supplied:
+
+- Alpine `apk add`, `apk del`, `apk upgrade`, `apk update` and `apk fix`: the container runs unprivileged and package changes belong in a reviewed Dockerfile/rebuild.
+- Nix `build`, `run`, `develop`, `shell`, profile install/remove, flake check/update, store garbage collection and optimisation: these may fetch resources, execute code, mutate the store or remove data. This image explicitly sets `sandbox = false` for Nix compatibility, making unattended execution inappropriate.
+- Full project audit and upgrade workflows that could modify source or download dependencies.
+
+Example:
 
 ```sh
-docker run --rm -it --mount type=bind,src="$PWD",dst=/workspace \
-  alpine-nix-pi:local needle-cli --execute --allow-write \
-  "Create a new file named summary.txt containing Hello"
+docker run --rm alpine-nix-pi:local needle-cli \
+  --call-json '{"name":"nix_store_gc_plan","arguments":{}}' --execute
 ```
 
-**The generated action is not guaranteed to match the user's intent.** Preview the proposed call before enabling execution. A JSON Schema bounds the allowed parameters, but it does not make model output trustworthy. Symlink/path traversal checks, fixed diagnostics, limits and explicit write flags provide defense in depth; they are not a complete sandbox. Never mount sensitive credentials or expose Pi to untrusted prompts.
+The output is a **plan**, not a performed garbage collection. Review it and run any selected commands yourself in a trusted context.
 
-## Published image choice (after release workflow success)
+## Tested use cases and boundaries
 
-| Variant | GHCR repository | Default command |
-| --- | --- | --- |
-| Vanilla | `ghcr.io/redoracle/nixos:vX.Y.Z` | `bash` |
-| Pi + Needle | `ghcr.io/redoracle/nixos-pi:vX.Y.Z` | `pi` |
+The repository's CI runs on **`linux/amd64` and `linux/arm64`**. Each architecture job:
 
-The release workflow builds the Pi image **from the exact matching published vanilla tag**, publishes both AMD64 and ARM64 variants under separate repositories, and verifies both manifests. Docker Hub mirrors are optional when repository credentials are configured. A PR does not publish images. Do not pull the Pi tag until the release workflow has actually published it.
+1. Builds and smoke-tests the vanilla Alpine + Nix image.
+2. Builds the optional Pi + Needle image from that tested base.
+3. Checks Pi CLI availability, registers the real Pi extension with a test host, verifies that Needle weights are present and exercises actual offline model inference without tool execution.
+4. Validates every tool's metadata and schema, then performs **all 60 deterministic operation tests** under UID 10001: read-only operations execute against the image; advisory operations must remain non-executable; the workspace create action is tested under explicit permission against a temporary fixture.
+5. Verifies that paths, shell-like package options, unexpected JSON properties, and hidden/secret files cannot bypass the catalog policy.
 
-## Provenance and updates
+The deterministic checks validate command mapping and safe execution, **not** a 100% success rate for Needle choosing the intended function from arbitrary natural language. The Pi extension can be loaded and its registration checked without connecting a paid API key, but a fully interactive Pi chat session requires a separately selected LLM.
 
-The Pi variant pins the top-level versions of `@earendil-works/pi-coding-agent` and `cactus-needle` in [`ai/package.json`](../ai/package.json). The installer disables npm lifecycle scripts. The WebAssembly runtime uses an upstream model manifest and downloads/caches Needle 3 weights during image build. **The npm transitive dependency graph is not yet frozen by a committed lockfile.** Treat this as an explicit reproducibility limitation; prefer a lockfile + `npm ci` and digest-pinned base image in a later hardening PR.
+## Trust and operational considerations
 
-Model weights are cached under the image user's home so normal runtime inference works without a model download (subject to runtime compatibility). The built image is larger than vanilla, and an offline tool-routing model is not a replacement for the remote/local Pi reasoning provider.
+- **Isolation:** neither image requires root at runtime, a Docker socket, or privileged containers. Nix builds run with sandbox disabled; never feed untrusted Nixpkgs derivations to Pi or manual commands.
+- **Secrets:** never put API keys in images or mount host secrets into an unrestricted Pi session. Pi's own tools can bypass Needle's router policy.
+- **Supply chain:** `apk` packages come from Alpine-signed repositories; npm dependencies are top-level version-pinned but transitive versions are not lockfile-pinned in this PR. This is a known reproducibility gap. Model weights are fetched at build time; review upstream model/license terms and consider a digest-pinned artifact mirror.
+- **Resource use:** the Pi image is intentionally larger, includes Node.js and model weights, and may have slower CPU inference on ARM emulation. Compare release image sizes after publishing.
+- **Deployment:** keep the baseline variant for minimal systems. Use a versioned or digest-pinned `nixos-pi` tag only when the optional features are needed.
+- **Rollback:** run the previous successful `nixos-pi` digest or switch directly back to the vanilla Alpine + Nix image; the main Dockerfile remains untouched.
 
-Needle's model and its upstream runtime may have distinct licenses; consult the [upstream license and artifact notices](https://github.com/cactus-compute/needle) and the [`cactus-needle` NOTICE](https://github.com/afshinm/cactus-needle/blob/main/NOTICE). Telemetry is disabled in the image with `NEEDLE_TELEMETRY=0` and `DO_NOT_TRACK=1`.
-
-## Security and maintenance acceptance
-
-- The vanilla image, default `Dockerfile`, user, and Nix store behavior are unchanged.
-- The extra image must pass separate Docker builds, Pi CLI smoke tests, and actual local Needle inference on AMD64 and ARM64 before release.
-- The tool catalog is finite and checked by unit tests. It does not grant Needle an arbitrary Bash execution capability.
-- No API key or Docker socket is baked into either image, and Pi's provider credentials should only be mounted at runtime when needed.
-- A monthly Dependabot review can update the Pi/npm packages, with multiarch CI gating and deliberate SemVer release tags.
-- Rollback is to the last published tagged image, or to the vanilla image if Pi/Needle is unnecessary.
-
-Read [`SECURITY.md`](../SECURITY.md) and [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for the wider container security model. Nix sandboxing remains disabled in *both* images.
+Further reference: [Nix command manual](https://nix.dev/manual/nix/latest/command-ref), [Alpine apk documentation](https://wiki.alpinelinux.org/wiki/Alpine_Package_Keeper), [Needle WebAssembly usage](https://github.com/afshinm/cactus-needle/blob/main/docs/usage.md), [SECURITY.md](../SECURITY.md), and [architecture guide](ARCHITECTURE.md).

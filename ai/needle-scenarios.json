@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Alpine+Nix Needle scenarios",
+  "description": "Illustrative natural-language requests for the named tool catalog. Needle predictions are probabilistic: expectedTool is an example, never a guaranteed outcome or test oracle. All operations are independently tested via explicit JSON call dispatch.",
+  "version": 1,
+  "examples": [
+    {
+      "id": "environment",
+      "prompt": "Which user and groups is this container running as?",
+      "scope": "system",
+      "expectedTool": "system_identity"
+    },
+    {
+      "id": "architecture",
+      "prompt": "Which CPU architecture is the container using?",
+      "scope": "system",
+      "expectedTool": "system_arch"
+    },
+    {
+      "id": "kernel",
+      "prompt": "Give me the current Linux kernel details",
+      "scope": "system",
+      "expectedTool": "system_kernel"
+    },
+    {
+      "id": "alpine-version",
+      "prompt": "Which Alpine version is installed here?",
+      "scope": "system",
+      "expectedTool": "alpine_release"
+    },
+    {
+      "id": "disk-capacity",
+      "prompt": "How much free disk space remains for the Nix store?",
+      "scope": "system",
+      "expectedTool": "system_disk"
+    },
+    {
+      "id": "apk-inventory",
+      "prompt": "List the installed Alpine packages",
+      "scope": "apk",
+      "expectedTool": "apk_installed"
+    },
+    {
+      "id": "apk-package-info",
+      "prompt": "What is installed in Alpine package nix?",
+      "scope": "apk",
+      "expectedTool": "apk_info"
+    },
+    {
+      "id": "apk-dependencies",
+      "prompt": "Show dependencies for the Alpine nix package",
+      "scope": "apk",
+      "expectedTool": "apk_dependencies"
+    },
+    {
+      "id": "apk-files",
+      "prompt": "List files installed by the Alpine nix package",
+      "scope": "apk",
+      "expectedTool": "apk_files"
+    },
+    {
+      "id": "apk-search",
+      "prompt": "Search Alpine packages for nix",
+      "scope": "apk",
+      "expectedTool": "apk_search"
+    },
+    {
+      "id": "apk-policy",
+      "prompt": "Which repo provides the nix package?",
+      "scope": "apk",
+      "expectedTool": "apk_policy"
+    },
+    {
+      "id": "apk-world",
+      "prompt": "What Alpine packages are explicitly requested?",
+      "scope": "apk",
+      "expectedTool": "apk_world"
+    },
+    {
+      "id": "apk-audit",
+      "prompt": "Audit Alpine-installed system files for changes",
+      "scope": "apk",
+      "expectedTool": "apk_audit"
+    },
+    {
+      "id": "apk-add-plan",
+      "prompt": "How should I safely add the curl Alpine package to the next image?",
+      "scope": "apk",
+      "expectedTool": "apk_install_plan"
+    },
+    {
+      "id": "apk-upgrade-plan",
+      "prompt": "Plan upgrading Alpine packages in a reviewed Docker rebuild",
+      "scope": "apk",
+      "expectedTool": "apk_upgrade_plan"
+    },
+    {
+      "id": "nix-version",
+      "prompt": "Show the Nix package manager version",
+      "scope": "nix",
+      "expectedTool": "nix_version"
+    },
+    {
+      "id": "nix-eval",
+      "prompt": "Can the Nix expression evaluator perform its self-test?",
+      "scope": "nix",
+      "expectedTool": "nix_eval_selftest"
+    },
+    {
+      "id": "nix-config",
+      "prompt": "Show the effective Nix sandbox and configuration settings",
+      "scope": "nix",
+      "expectedTool": "nix_config"
+    },
+    {
+      "id": "nix-store-health",
+      "prompt": "Verify local Nix store integrity without modifying it",
+      "scope": "nix",
+      "expectedTool": "nix_store_verify"
+    },
+    {
+      "id": "nix-store-roots",
+      "prompt": "Which paths are garbage collection roots?",
+      "scope": "nix",
+      "expectedTool": "nix_store_roots"
+    },
+    {
+      "id": "nix-store-closure",
+      "prompt": "Find dependencies of this known Nix store path",
+      "scope": "nix",
+      "expectedTool": "nix_store_requisites"
+    },
+    {
+      "id": "nix-profile-list",
+      "prompt": "Which packages are in the current Nix user profile?",
+      "scope": "nix",
+      "expectedTool": "nix_profile_list"
+    },
+    {
+      "id": "flake-metadata",
+      "prompt": "Prepare a plan to examine a local flake's metadata",
+      "scope": "nix",
+      "expectedTool": "nix_flake_metadata_plan"
+    },
+    {
+      "id": "flake-build",
+      "prompt": "Plan how to build a local Nix flake safely",
+      "scope": "nix",
+      "expectedTool": "nix_build_plan"
+    },
+    {
+      "id": "nix-devshell",
+      "prompt": "How do I enter a trusted local Nix development shell?",
+      "scope": "nix",
+      "expectedTool": "nix_develop_plan"
+    },
+    {
+      "id": "nix-gc",
+      "prompt": "Can I safely reclaim unused Nix store paths? Plan a cleanup.",
+      "scope": "nix",
+      "expectedTool": "nix_store_gc_plan"
+    },
+    {
+      "id": "workspace-overview",
+      "prompt": "Show which files exist in the workspace",
+      "scope": "workspace",
+      "expectedTool": "workspace_list"
+    },
+    {
+      "id": "workspace-read",
+      "prompt": "Read the catalog-test.txt file in the workspace",
+      "scope": "workspace",
+      "expectedTool": "workspace_read"
+    },
+    {
+      "id": "workspace-hash",
+      "prompt": "Compute SHA-256 for catalog-test.txt",
+      "scope": "workspace",
+      "expectedTool": "workspace_hash"
+    },
+    {
+      "id": "workspace-write",
+      "prompt": "Prepare creating a new text file in the workspace",
+      "scope": "workspace",
+      "expectedTool": "workspace_create"
+    },
+    {
+      "id": "system-audit",
+      "prompt": "Run a read-only system environment audit",
+      "scope": "workflow",
+      "expectedTool": "workflow_system_audit"
+    },
+    {
+      "id": "dependency-audit",
+      "prompt": "Run a local dependency inventory workflow",
+      "scope": "workflow",
+      "expectedTool": "workflow_dependency_audit"
+    },
+    {
+      "id": "nix-health",
+      "prompt": "Run offline Nix evaluator and store integrity checks",
+      "scope": "workflow",
+      "expectedTool": "workflow_nix_health"
+    },
+    {
+      "id": "project-preflight",
+      "prompt": "Plan review of a local Nix flake project",
+      "scope": "workflow",
+      "expectedTool": "workflow_project_plan"
+    },
+    {
+      "id": "upgrade-workflow",
+      "prompt": "Plan an Alpine and Nix upgrade workflow for a future release",
+      "scope": "workflow",
+      "expectedTool": "workflow_upgrade_plan"
+    }
+  ]
+}

@@ -69,9 +69,9 @@ docker build -f Dockerfile.pi --build-arg BASE_IMAGE=alpine-nix:local -t alpine-
 docker run --rm -it alpine-nix-pi:local
 ```
 
-The Pi image defaults to the `pi` interactive coding agent. A **separate**, local WebAssembly-based Needle 3 tool router is available as `needle-cli`; it prints suggested JSON actions by default, and only executes a small, documented allowlist when `--execute` is supplied. **Needle is not a Pi reasoning/chat model.** The Pi agent still needs a separately configured supported LLM provider or local reasoning endpoint.
+The Pi image defaults to the `pi` interactive coding agent and auto-loads a **`needle_route` Pi extension** that proposes locally inferred JSON actions. The separate `needle-cli` exposes **60 catalogued functions** (6 system, 17 apk, 27 Nix, 5 workspace, 5 workflows), with scoped model selection, explicit execution consent, and manual-only plans for potentially dangerous operations. **Needle is not a Pi reasoning/chat model.** Pi still needs a configured reasoning provider, and its built-in Bash tool is outside Needle's execution policy.
 
-Successful versioned releases publish both `ghcr.io/redoracle/nixos:vX.Y.Z` (vanilla) and `ghcr.io/redoracle/nixos-pi:vX.Y.Z` (opt-in), verified on AMD64 and ARM64. See the detailed [Pi + Needle integration and security guide](docs/PI-NEEDLE.md) before using the model or mounting a workspace.
+Successful versioned releases publish both `ghcr.io/redoracle/nixos:vX.Y.Z` (vanilla) and `ghcr.io/redoracle/nixos-pi:vX.Y.Z` (opt-in), verified on AMD64 and ARM64. See the detailed [Pi + Needle integration and security guide](docs/PI-NEEDLE.md) and [35 use-case prompts](ai/needle-scenarios.json) before using the model or mounting a workspace. Both architectures execute each catalog action deterministically in CI, with separate offline Needle-inference checks.
 
 ## Design and security
 
