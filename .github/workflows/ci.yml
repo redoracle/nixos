@@ -40,15 +40,19 @@ jobs:
           package-manager-cache: false
       - name: Install release tooling dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Generate clean release-tooling lockfile for final reproducibility pass
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node -e 'const fs=require("node:fs");console.log("ROOT_NPM_LOCK_B64:"+fs.readFileSync("package-lock.json").toString("base64"))'
       - name: Verify release dependency compatibility
         run: npm ls --depth=0
       - name: Verify release-notes generation and compatibility
         run: npm run test:release-notes
-      - name: Generate an auditable npm lock for optional Pi dependencies
+      - name: Verify locked Pi and Needle dependency graph
         run: |
           cd ai
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          node -e 'const fs=require("node:fs"); console.log("AI_NPM_LOCK_B64:" + fs.readFileSync("package-lock.json").toString("base64"))'
+          npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+          npm ls --depth=0
       - name: Validate maintenance and release scripts
         run: |
           node --check scripts/prepare-release.mjs
@@ -56,11 +60,13 @@ jobs:
           node --check scripts/check-release-notes.mjs
           node --check scripts/cleanup-branches.mjs
           node scripts/check-release.mjs
-          node --test tests/branch-cleanup.test.mjs tests/branch-cleanup-api.test.mjs tests/pi-needle.test.mjs tests/needle-scenarios.test.mjs tests/release-preparation.test.mjs
+          node --test tests/branch-cleanup.test.mjs tests/branch-cleanup-api.test.mjs tests/pi-needle.test.mjs tests/needle-scenarios.test.mjs tests/release-preparation.test.mjs tests/model-integrity.test.mjs
           node --check ai/needle-policy.mjs
           node --check ai/needle-cli.mjs
           node --check ai/needle-engine.mjs
           node --check ai/needle-benchmark.mjs
+          node --check ai/model-integrity.mjs
+          node --check ai/verify-model.mjs
           node --check ai/needle-predictions.mjs
           node --check ai/needle-selection.mjs
           node --check ai/needle-pi-extension.js
@@ -104,3 +110,6 @@ jobs:
         run: docker run --rm -i alpine-nix-pi:ci node --input-type=module - < tests/pi-rpc-smoke.mjs
       - name: Verify complete Pi/Needle tool-calling conversation with deterministic local provider
         run: docker run --rm -i alpine-nix-pi:ci node --input-type=module - < tests/pi-agent-conversation.mjs
+      - name: Measure real Needle tool selection on 35 scenarios (non-gating, AMD64 only)
+        if: matrix.platform == 'linux/amd64'
+        run: docker run --rm alpine-nix-pi:ci node /opt/pi-needle/needle-benchmark.mjs --limit=35 --mode=auto

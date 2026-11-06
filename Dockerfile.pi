@@ -16,12 +16,12 @@ RUN apk add --no-cache nodejs npm \
     && mkdir -p /opt/pi-needle /workspace \
     && chown nixuser:nixuser /workspace
 
-COPY ai/package.json /opt/pi-needle/package.json
+COPY ai/package.json ai/package-lock.json /opt/pi-needle/
 RUN cd /opt/pi-needle \
-    && npm install --ignore-scripts --omit=dev --no-audit --no-fund \
+    && npm ci --ignore-scripts --omit=dev --no-audit --no-fund \
     && ln -s /opt/pi-needle/node_modules/.bin/pi /usr/local/bin/pi
 
-COPY ai/needle-cli.mjs ai/needle-benchmark.mjs ai/needle-engine.mjs ai/needle-predictions.mjs ai/needle-selection.mjs ai/needle-policy.mjs ai/needle-pi-extension.js ai/needle-tools.json ai/needle-scenarios.json /opt/pi-needle/
+COPY ai/needle-cli.mjs ai/needle-benchmark.mjs ai/model-integrity.mjs ai/verify-model.mjs ai/needle-engine.mjs ai/needle-predictions.mjs ai/needle-selection.mjs ai/needle-policy.mjs ai/needle-pi-extension.js ai/needle-tools.json ai/needle-scenarios.json /opt/pi-needle/
 RUN chmod 755 /opt/pi-needle/needle-cli.mjs \
     && ln -s /opt/pi-needle/needle-cli.mjs /usr/local/bin/needle-cli \
     && mkdir -p /home/nixuser/.pi/agent \
@@ -37,7 +37,8 @@ WORKDIR /workspace
 
 # Download checksum-verified upstream Needle 3 weights during build.
 # Runtime does not need a model download if this succeeds.
-RUN node /opt/pi-needle/needle-cli.mjs --download
+RUN node /opt/pi-needle/needle-cli.mjs --download \
+    && node /opt/pi-needle/verify-model.mjs
 
 # Pi automatically loads the read-only Needle routing extension. Needle does NOT
 # replace Pi's reasoning provider or constrain Pi's independent native bash tool.
