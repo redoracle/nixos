@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Lint GitHub Actions workflows
+        run: |
+          docker run --rm --volume "$PWD:/repo:ro" --workdir /repo \
+            rhysd/actionlint:1.7.12 -color
+      - name: Check POSIX shell syntax
+        run: sh -n install_nix.sh tests/*.sh
+      - name: Run ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck --shell=sh install_nix.sh tests/*.sh
+      - name: Test installer contract
+        run: sh tests/test-installer.sh
+      - name: Set up Node.js 24 for release-tool verification
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Install release tooling dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify release dependency compatibility
+        run: npm ls --depth=0
+      - name: Validate release configuration and scripts
+        run: |
+          node --check scripts/prepare-release.mjs
+          node --check scripts/check-release.mjs
+          node scripts/check-release.mjs
+
+  container:
+    name: Container ${{ matrix.platform }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build image
+        run: docker buildx build --platform '${{ matrix.platform }}' --load --tag alpine-nix:ci .
+      - name: Smoke-test Nix and writable store
+        run: docker run --rm -i alpine-nix:ci sh -s < tests/smoke.sh

@@ -1,0 +1,13 @@
+# Local and CI-generated release tooling files
+node_modules/
+.release-version
+npm-debug.log*
+yarn-error.log*
+
+# Local secrets and editor metadata
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/

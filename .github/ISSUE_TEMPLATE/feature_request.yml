@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest a focused improvement to the image, CI, documentation, or maintenance.
+title: "feat: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the user need, not only the proposed implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Explain benefits, alternatives, and backward compatibility.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and performance considerations
+      description: Consider image size, new privileges, untrusted packages, and supported architectures.
+    validations:
+      required: true
