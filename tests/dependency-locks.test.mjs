@@ -22,6 +22,15 @@ for (const directory of ['.', 'ai']) {
     let resolved = 0;
     for (const [path, packageEntry] of Object.entries(lock.packages)) {
       if (!packageEntry.resolved) continue;
+      if (directory === '.' && path === 'node_modules/@semantic-release/npm') {
+        // This one explicitly reviewed root-owned file link prevents pulling in
+        // the unused upstream npm publisher and its vulnerable bundled npm CLI.
+        assert.equal(packageEntry.resolved, 'vendor/semantic-release-npm-disabled');
+        assert.equal(packageEntry.link, true);
+        assert.equal(lock.packages['vendor/semantic-release-npm-disabled'].name,
+          '@semantic-release/npm');
+        continue;
+      }
       assert.match(packageEntry.resolved,
         /^https:\/\/registry\.npmjs\.org\/[^?#]+\.tgz$/,
         'Untrusted package tarball destination: ' + path);
@@ -32,3 +41,27 @@ for (const directory of ['.', 'ai']) {
     assert.ok(resolved > 20, 'Unexpectedly sparse transitive dependency graph');
   });
 }
+
+test('GHCR-only release excludes the unused npm publisher and vulnerable bundled minimatch', async () => {
+  const [manifest, lock, config] = await Promise.all([
+    getJson('package.json'), getJson('package-lock.json'), getJson('.releaserc.json'),
+  ]);
+  assert.equal(manifest.devDependencies['@semantic-release/npm'],
+    'file:./vendor/semantic-release-npm-disabled');
+  assert.equal(manifest.overrides['@semantic-release/npm'], '$@semantic-release/npm');
+  assert.ok(config.plugins.every(([name]) => name !== '@semantic-release/npm'));
+  assert.equal(Object.hasOwn(lock.packages, 'node_modules/npm'), false,
+    'The upstream npm registry publisher must not bring in a bundled npm CLI');
+  for (const [path, pkg] of Object.entries(lock.packages)) {
+    if (!path.endsWith('/minimatch')) continue;
+    const major = Number(pkg.version.split('.')[0]);
+    assert.ok(major < 7 || major >= 11,
+      'Vulnerable minimatch reintroduced through ' + path + ': ' + pkg.version);
+  }
+
+  const disabled = await import('../vendor/semantic-release-npm-disabled/index.js');
+  for (const name of ['verifyConditions', 'prepare', 'publish', 'addChannel']) {
+    assert.throws(() => disabled[name](),
+      /npm registry publishing is disabled for this GHCR-only repository/);
+  }
+});

@@ -11,3 +11,4 @@ package.json
 package-lock.json
 .releaserc.json
 .release-version
+vendor
