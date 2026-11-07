@@ -15,6 +15,10 @@
   "devDependencies": {
     "@semantic-release/exec": "7.1.0",
     "conventional-changelog-conventionalcommits": "9.3.1",
-    "semantic-release": "25.0.9"
+    "semantic-release": "25.0.9",
+    "@semantic-release/npm": "file:./vendor/semantic-release-npm-disabled"
+  },
+  "overrides": {
+    "@semantic-release/npm": "$@semantic-release/npm"
   }
 }
