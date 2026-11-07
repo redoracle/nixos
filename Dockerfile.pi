@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+# Opt-in Pi + Needle variant; preserve the vanilla Dockerfile and its defaults.
+# Override BASE_IMAGE with the matching tested local or released vanilla image.
+ARG BASE_IMAGE=ghcr.io/redoracle/nixos:v3.0.3
+FROM ${BASE_IMAGE}
+
+LABEL org.opencontainers.image.title="Alpine + Nix + Pi + Needle" \
+      org.opencontainers.image.description="Optional Pi coding agent with local Needle tool routing" \
+      org.opencontainers.image.source="https://github.com/redoracle/nixos" \
+      org.opencontainers.image.licenses="MIT"
+
+USER root
+# Node is provided by Alpine's signed repository; no curl | sh installers.
+RUN apk add --no-cache nodejs npm \
+    && node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && minor < 19)) { throw Error("Pi requires Node >=22.19") }' \
+    && mkdir -p /opt/pi-needle /workspace \
+    && chown nixuser:nixuser /workspace
+
+COPY ai/package.json ai/package-lock.json /opt/pi-needle/
+RUN cd /opt/pi-needle \
+    && npm ci --ignore-scripts --omit=dev --no-audit --no-fund \
+    && ln -s /opt/pi-needle/node_modules/.bin/pi /usr/local/bin/pi
+
+COPY ai/needle-cli.mjs ai/needle-benchmark.mjs ai/model-integrity.mjs ai/verify-model.mjs ai/needle-engine.mjs ai/needle-predictions.mjs ai/needle-selection.mjs ai/needle-policy.mjs ai/needle-pi-extension.js ai/needle-tools.json ai/needle-scenarios.json /opt/pi-needle/
+RUN chmod 755 /opt/pi-needle/needle-cli.mjs \
+    && ln -s /opt/pi-needle/needle-cli.mjs /usr/local/bin/needle-cli \
+    && mkdir -p /home/nixuser/.pi/agent \
+    && printf '%s\n' '{"extensions":["/opt/pi-needle/needle-pi-extension.js"]}' > /home/nixuser/.pi/agent/settings.json \
+    && chown -R nixuser:nixuser /home/nixuser/.pi \
+    && chown -R root:root /opt/pi-needle
+
+USER nixuser
+ENV XDG_CACHE_HOME=/home/nixuser/.cache \
+    NEEDLE_TELEMETRY=0 \
+    DO_NOT_TRACK=1
+WORKDIR /workspace
+
+# Download checksum-verified upstream Needle 3 weights during build.
+# Runtime does not need a model download if this succeeds.
+RUN node /opt/pi-needle/needle-cli.mjs --download \
+    && node /opt/pi-needle/verify-model.mjs
+
+# Pi automatically loads the read-only Needle routing extension. Needle does NOT
+# replace Pi's reasoning provider or constrain Pi's independent native bash tool.
+CMD ["pi"]

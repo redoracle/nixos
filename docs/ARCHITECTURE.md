@@ -101,6 +101,17 @@ Other closed but unmerged PR branches are **not** deleted automatically. Git tag
 | Reproducibility | Published image digests are immutable references; source builds with moving Alpine repositories or unlocked flakes are not bit-reproducible |
 | Supply chain | Images request SBOM and provenance, but no independent signature enforcement, admission policy, or automatic vulnerability exception process is claimed |
 
+
+## Optional Pi + Needle layer
+
+The opt-in `Dockerfile.pi` derives from the tested vanilla image and adds a pinned Pi coding-agent CLI and local Needle 3 WebAssembly runtime. Model weights are fetched at build time as UID 10001; neither the vanilla image nor the underlying non-root Nix store setup changes.
+
+Pi loads the local `needle_route` extension, which returns **proposed** JSON actions. `needle-cli` can subsequently execute only reviewed read-only commands or explicitly approved new workspace file creation. The 60-tool catalog is split into `system`, `apk`, `nix`, `workspace`, and `workflow` domains so Needle is not asked to reason over a monolithic list on each request. `apk` root operations and Nix builds, shells, profile mutation, flake changes and garbage collection are manual-only plans; no arbitrary shell is accepted by the Needle dispatcher.
+
+The Pi reasoning agent still needs a supported LLM provider and retains its independent tools, including `bash`. The Needle policy is **not** a global restriction on Pi and does not make disabled Nix sandboxing safe for untrusted builds. A separate CI matrix builds both flavors and executes all catalog entries deterministically; an independent inference smoke test validates the local model without requiring an external Pi provider.
+
+See [Pi + Needle usage, catalogs, command classes, examples and safety limits](PI-NEEDLE.md).
+
 ## Non-goals and future work
 
 This project does not implement NixOS modules, a production multi-user Nix daemon, a privileged container, or complete sandbox isolation.

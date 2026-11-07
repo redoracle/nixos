@@ -58,6 +58,21 @@ To mount a working directory, use a bind mount such as `--mount type=bind,src="$
 
 The Nix store is ephemeral by default. If the container is removed, its store is removed too; persisting it requires explicit storage and ownership planning.
 
+
+## Optional Pi coding agent + offline Needle tool routing
+
+A separate [`Dockerfile.pi`](Dockerfile.pi) builds an **opt-in** Pi + Needle variant from the same vanilla Alpine + Nix image. The existing `Dockerfile` and published vanilla image remain unchanged.
+
+```sh
+docker build -t alpine-nix:local .
+docker build -f Dockerfile.pi --build-arg BASE_IMAGE=alpine-nix:local -t alpine-nix-pi:local .
+docker run --rm -it alpine-nix-pi:local
+```
+
+The Pi image defaults to the `pi` interactive coding agent and auto-loads a **`needle_route` Pi extension** that proposes locally inferred JSON actions. The separate `needle-cli` exposes **60 catalogued functions** (6 system, 17 apk, 27 Nix, 5 workspace, 5 workflows), with scoped model selection, explicit execution consent, and manual-only plans for potentially dangerous operations. **Needle is not a Pi reasoning/chat model.** Pi still needs a configured reasoning provider, and its built-in Bash tool is outside Needle's execution policy.
+
+Successful versioned releases publish both `ghcr.io/redoracle/nixos:vX.Y.Z` (vanilla) and `ghcr.io/redoracle/nixos-pi:vX.Y.Z` (opt-in), verified on AMD64 and ARM64. See the detailed [Pi + Needle integration and security guide](docs/PI-NEEDLE.md) and [35 use-case prompts](ai/needle-scenarios.json) before using the model or mounting a workspace. Both architectures execute each catalog action deterministically in CI, while 35 realistic scenarios now test automatic shortlist selection and a real Pi RPC smoke test verifies extension loading. Actual model-selection accuracy is measured in a non-gating AMD64 CI benchmark, while a deterministic local-provider test verifies Pi's complete tool-calling conversation. Both npm dependency trees use integrity-locked lockfiles and the offline Needle weights are SHA-256 checked. The initial 35-prompt model benchmark achieved only **11/35 (31.4%) correct**; use explicit JSON catalog execution for reliable commands rather than treating probabilistic proposals as production-ready autonomous routing.
+
 ## Design and security
 
 | Component | Choice | Reason |

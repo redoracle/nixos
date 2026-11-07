@@ -41,7 +41,7 @@ jobs:
           package-manager-cache: false
 
       - name: Test branch eligibility safeguards
-        run: node --test tests/branch-cleanup.test.mjs
+        run: node --test tests/branch-cleanup.test.mjs tests/branch-cleanup-api.test.mjs
 
       - name: Prune eligible branch refs
         run: node scripts/cleanup-branches.mjs

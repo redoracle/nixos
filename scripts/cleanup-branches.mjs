@@ -36,8 +36,8 @@ export function cleanupCandidates({ branches, pulls, repository, defaultBranch }
   });
 }
 
-async function api(path, token, { method = 'GET', allow404 = false } = {}) {
-  const response = await fetch(`https://api.github.com/${path}`, {
+async function api(path, token, { method = 'GET', allow404 = false, request = fetch } = {}) {
+  const response = await request(`https://api.github.com/${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -52,11 +52,11 @@ async function api(path, token, { method = 'GET', allow404 = false } = {}) {
   return response.json();
 }
 
-async function listAll(path, token) {
+async function listAll(path, token, request) {
   const items = [];
   for (let page = 1; page <= 20; page += 1) {
     const separator = path.includes('?') ? '&' : '?';
-    const batch = await api(`${path}${separator}per_page=100&page=${page}`, token);
+    const batch = await api(`${path}${separator}per_page=100&page=${page}`, token, { request });
     if (!Array.isArray(batch)) throw new Error('Expected a GitHub result array');
     items.push(...batch);
     if (batch.length < 100) return items;
@@ -68,18 +68,20 @@ export async function runCleanup({
   repository = process.env.GITHUB_REPOSITORY,
   token = process.env.GITHUB_TOKEN,
   dryRun = process.env.CLEANUP_DRY_RUN !== 'false',
+  fetchImpl = globalThis.fetch,
 } = {}) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') || !token) {
     throw new Error('Valid GITHUB_REPOSITORY and GITHUB_TOKEN are required');
   }
-  const metadata = await api(`repos/${repository}`, token);
+  if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl must be a function');
+  const metadata = await api(`repos/${repository}`, token, { request: fetchImpl });
   if (metadata.full_name.toLowerCase() !== repository.toLowerCase()) {
     throw new Error('GitHub repository identity mismatch');
   }
 
   const [branches, pulls] = await Promise.all([
-    listAll(`repos/${repository}/branches`, token),
-    listAll(`repos/${repository}/pulls?state=all`, token),
+    listAll(`repos/${repository}/branches`, token, fetchImpl),
+    listAll(`repos/${repository}/pulls?state=all`, token, fetchImpl),
   ]);
   const candidates = cleanupCandidates({
     branches, pulls, repository, defaultBranch: metadata.default_branch,
@@ -89,7 +91,7 @@ export async function runCleanup({
   for (const branch of candidates) {
     const escaped = encodeURIComponent(branch.name);
     const branchPath = `repos/${repository}/branches/${escaped}`;
-    const latest = await api(branchPath, token, { allow404: true });
+    const latest = await api(branchPath, token, { allow404: true, request: fetchImpl });
     if (!latest || latest.protected || latest.commit?.sha !== branch.sha) {
       console.log(`Skipping changed/protected/deleted branch: ${branch.name}`);
       continue;
@@ -99,7 +101,7 @@ export async function runCleanup({
     const owner = repository.split('/')[0];
     const head = encodeURIComponent(`${owner}:${branch.name}`);
     const active = await listAll(
-      `repos/${repository}/pulls?state=open&head=${head}`, token,
+      `repos/${repository}/pulls?state=open&head=${head}`, token, fetchImpl,
     );
     if (active.length) {
       console.log(`Skipping branch under review: ${branch.name}`);
@@ -108,8 +110,8 @@ export async function runCleanup({
 
     console.log(`${dryRun ? 'Would delete' : 'Deleting'} ${branch.name} (${branch.sha}), ${branch.reason} #${branch.prNumber}`);
     if (!dryRun) {
-      await api(`repos/${repository}/git/refs/heads/${escaped}`, token, { method: 'DELETE' });
-      if (await api(branchPath, token, { allow404: true })) {
+      await api(`repos/${repository}/git/refs/heads/${escaped}`, token, { method: 'DELETE', request: fetchImpl });
+      if (await api(branchPath, token, { allow404: true, request: fetchImpl })) {
         throw new Error(`Branch survived DELETE request: ${branch.name}`);
       }
       console.log(`Verified deleted: ${branch.name}`);

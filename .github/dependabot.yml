@@ -32,3 +32,13 @@ updates:
     ignore:
       - dependency-name: conventional-changelog-conventionalcommits
         update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: /ai
+    schedule:
+      interval: monthly
+      time: "05:30"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "fix(deps)"

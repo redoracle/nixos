@@ -38,12 +38,17 @@ jobs:
         with:
           node-version: "24"
           package-manager-cache: false
-      - name: Install release tooling dependencies
-        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install integrity-locked release tooling dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify release dependency compatibility
         run: npm ls --depth=0
       - name: Verify release-notes generation and compatibility
         run: npm run test:release-notes
+      - name: Verify locked Pi and Needle dependency graph
+        run: |
+          cd ai
+          npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+          npm ls --depth=0
       - name: Validate maintenance and release scripts
         run: |
           node --check scripts/prepare-release.mjs
@@ -51,11 +56,21 @@ jobs:
           node --check scripts/check-release-notes.mjs
           node --check scripts/cleanup-branches.mjs
           node scripts/check-release.mjs
-          node --test tests/branch-cleanup.test.mjs
+          node --test tests/branch-cleanup.test.mjs tests/branch-cleanup-api.test.mjs tests/pi-needle.test.mjs tests/needle-scenarios.test.mjs tests/release-preparation.test.mjs tests/model-integrity.test.mjs tests/dependency-locks.test.mjs
+          node --check ai/needle-policy.mjs
+          node --check ai/needle-cli.mjs
+          node --check ai/needle-engine.mjs
+          node --check ai/needle-benchmark.mjs
+          node --check ai/model-integrity.mjs
+          node --check ai/verify-model.mjs
+          node --check ai/needle-predictions.mjs
+          node --check ai/needle-selection.mjs
+          node --check ai/needle-pi-extension.js
 
   container:
     name: Container ${{ matrix.platform }}
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -70,3 +85,27 @@ jobs:
         run: docker buildx build --platform '${{ matrix.platform }}' --load --tag alpine-nix:ci .
       - name: Smoke-test Nix and writable store
         run: docker run --rm -i alpine-nix:ci sh -s < tests/smoke.sh
+      - name: Test Alpine installer on non-root and isolated root paths
+        run: |
+          docker run --rm -i \
+            --volume "$PWD/install_nix.sh:/tmp/install_nix.sh:ro" \
+            alpine-nix:ci sh -s < tests/test-installer-alpine.sh
+          docker run --rm -i --user 0 \
+            --volume "$PWD/install_nix.sh:/tmp/install_nix.sh:ro" \
+            alpine-nix:ci sh -s < tests/test-installer-alpine.sh
+      - name: Build opt-in Pi and Needle variant
+        run: |
+          docker buildx build --builder default --platform '${{ matrix.platform }}' --load \
+            --file Dockerfile.pi --build-arg BASE_IMAGE=alpine-nix:ci \
+            --tag alpine-nix-pi:ci .
+      - name: Execute every catalog entry under the unprivileged image user
+        run: docker run --rm -i alpine-nix-pi:ci node --input-type=module - < tests/pi-catalog-smoke.mjs
+      - name: Smoke-test Pi and offline Needle inference
+        run: docker run --rm -i alpine-nix-pi:ci sh -s < tests/pi-smoke.sh
+      - name: Verify real Pi RPC extension discovery and slash command
+        run: docker run --rm -i alpine-nix-pi:ci node --input-type=module - < tests/pi-rpc-smoke.mjs
+      - name: Verify complete Pi/Needle tool-calling conversation with deterministic local provider
+        run: docker run --rm -i alpine-nix-pi:ci node --input-type=module - < tests/pi-agent-conversation.mjs
+      - name: Measure real Needle tool selection on 35 scenarios (non-gating, AMD64 only)
+        if: matrix.platform == 'linux/amd64'
+        run: docker run --rm alpine-nix-pi:ci node /opt/pi-needle/needle-benchmark.mjs --limit=35 --mode=auto

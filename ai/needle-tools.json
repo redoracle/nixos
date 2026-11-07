@@ -1,0 +1,1405 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Alpine + Nix Needle catalog",
+  "description": "Curated Nix, apk, workspace and diagnostics. Read-only inspection can be executed only with --execute; file creation requires --allow-write; all installs, builds, upgrades and destructive operations are advisory-only. Pi's independent bash tool is not restricted by this policy.",
+  "version": 2,
+  "groups": {
+    "system": "OS and runtime inspection",
+    "apk": "Alpine package queries and root-only maintenance plans",
+    "nix": "Nix store/profile inspection and trusted-build plans",
+    "workspace": "Workspace-confined file actions",
+    "workflow": "Composed diagnostics and operational plans"
+  },
+  "tools": {
+    "system_identity": {
+      "category": "system",
+      "mode": "readonly",
+      "description": "Show current UID and group IDs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "id"
+      ],
+      "exampleArguments": {}
+    },
+    "system_arch": {
+      "category": "system",
+      "mode": "readonly",
+      "description": "Show machine architecture.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "uname",
+        "-m"
+      ],
+      "exampleArguments": {}
+    },
+    "system_kernel": {
+      "category": "system",
+      "mode": "readonly",
+      "description": "Show running Linux kernel information.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "uname",
+        "-a"
+      ],
+      "exampleArguments": {}
+    },
+    "system_disk": {
+      "category": "system",
+      "mode": "readonly",
+      "description": "Inspect Nix store disk space.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "df",
+        "-h",
+        "/nix"
+      ],
+      "exampleArguments": {}
+    },
+    "alpine_release": {
+      "category": "system",
+      "mode": "readonly",
+      "description": "Read installed Alpine release version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "cat",
+        "/etc/alpine-release"
+      ],
+      "exampleArguments": {}
+    },
+    "node_version": {
+      "category": "system",
+      "mode": "readonly",
+      "description": "Report Node.js version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "node",
+        "--version"
+      ],
+      "exampleArguments": {}
+    },
+    "apk_version": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "Report apk-tools version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "--version"
+      ],
+      "exampleArguments": {}
+    },
+    "apk_installed": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "List installed Alpine packages.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "info"
+      ],
+      "exampleArguments": {}
+    },
+    "apk_info": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "Show full information for an Alpine package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9+._-]{0,63}$",
+            "description": "Safe Alpine package identifier; no options or globbing"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "info",
+        "-a",
+        "{package}"
+      ],
+      "exampleArguments": {
+        "package": "nix"
+      }
+    },
+    "apk_dependencies": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "List Alpine package dependencies.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9+._-]{0,63}$",
+            "description": "Safe Alpine package identifier; no options or globbing"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "info",
+        "-R",
+        "{package}"
+      ],
+      "exampleArguments": {
+        "package": "nix"
+      }
+    },
+    "apk_required_by": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "List reverse dependencies for an Alpine package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9+._-]{0,63}$",
+            "description": "Safe Alpine package identifier; no options or globbing"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "info",
+        "-r",
+        "{package}"
+      ],
+      "exampleArguments": {
+        "package": "nix"
+      }
+    },
+    "apk_files": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "List installed files owned by an Alpine package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9+._-]{0,63}$",
+            "description": "Safe Alpine package identifier; no options or globbing"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "info",
+        "-L",
+        "{package}"
+      ],
+      "exampleArguments": {
+        "package": "nix"
+      }
+    },
+    "apk_search": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "Search locally indexed Alpine package names.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9+._-]{0,63}$",
+            "description": "Safe Alpine package identifier; no options or globbing"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "search",
+        "{package}"
+      ],
+      "exampleArguments": {
+        "package": "nix"
+      }
+    },
+    "apk_policy": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "Inspect repository priority and available versions for a package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9+._-]{0,63}$",
+            "description": "Safe Alpine package identifier; no options or globbing"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "policy",
+        "{package}"
+      ],
+      "exampleArguments": {
+        "package": "nix"
+      }
+    },
+    "apk_stats": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "Inspect Alpine package database statistics.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "stats"
+      ],
+      "exampleArguments": {}
+    },
+    "apk_repositories": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "Read configured Alpine package repository list.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "cat",
+        "/etc/apk/repositories"
+      ],
+      "exampleArguments": {}
+    },
+    "apk_world": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "Read explicit Alpine world package constraints.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "cat",
+        "/etc/apk/world"
+      ],
+      "exampleArguments": {}
+    },
+    "apk_audit": {
+      "category": "apk",
+      "mode": "readonly",
+      "description": "Check system files against Alpine package database; diagnostic exit 99 allowed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "audit",
+        "--system"
+      ],
+      "exampleArguments": {}
+    },
+    "apk_install_plan": {
+      "category": "apk",
+      "mode": "manual",
+      "description": "Plan installing an Alpine package in a reviewed Docker build.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9+._-]{0,63}$",
+            "description": "Safe Alpine package identifier; no options or globbing"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "add",
+        "--no-cache",
+        "{package}"
+      ],
+      "exampleArguments": {
+        "package": "nix"
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "apk_remove_plan": {
+      "category": "apk",
+      "mode": "manual",
+      "description": "Plan removal of Alpine package; destructive root-only operation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9+._-]{0,63}$",
+            "description": "Safe Alpine package identifier; no options or globbing"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "del",
+        "{package}"
+      ],
+      "exampleArguments": {
+        "package": "nix"
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "apk_upgrade_plan": {
+      "category": "apk",
+      "mode": "manual",
+      "description": "Plan a reviewable image rebuild with apk upgrade.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "upgrade"
+      ],
+      "exampleArguments": {},
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "apk_update_plan": {
+      "category": "apk",
+      "mode": "manual",
+      "description": "Plan refreshing apk indexes in a trusted build.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "update"
+      ],
+      "exampleArguments": {},
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "apk_fix_plan": {
+      "category": "apk",
+      "mode": "manual",
+      "description": "Plan a reviewed Alpine package reinstall or repair.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "package": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9+._-]{0,63}$",
+            "description": "Safe Alpine package identifier; no options or globbing"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "apk",
+        "fix",
+        "{package}"
+      ],
+      "exampleArguments": {
+        "package": "nix"
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_version": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Report Nix package manager version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "--version"
+      ],
+      "exampleArguments": {}
+    },
+    "nix_eval_selftest": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Evaluate only the fixed 1+1 Nix self-test expression.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-instantiate",
+        "--eval",
+        "--expr",
+        "1 + 1"
+      ],
+      "exampleArguments": {}
+    },
+    "nix_config": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Inspect effective Nix configuration, including sandbox setting.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "show-config"
+      ],
+      "exampleArguments": {}
+    },
+    "nix_registry": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Read Nix flake registry mappings.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "registry",
+        "list"
+      ],
+      "exampleArguments": {}
+    },
+    "nix_store_verify": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Verify current Nix store consistency, never repair.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "--verify"
+      ],
+      "exampleArguments": {}
+    },
+    "nix_store_roots": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "List garbage collection roots without removing any.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "--gc",
+        "--print-roots"
+      ],
+      "exampleArguments": {}
+    },
+    "nix_store_dead": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "List paths eligible for Nix garbage collection, without deletion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "--gc",
+        "--print-dead"
+      ],
+      "exampleArguments": {}
+    },
+    "nix_store_live": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "List store paths retained by GC roots.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "--gc",
+        "--print-live"
+      ],
+      "exampleArguments": {}
+    },
+    "nix_store_references": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Show direct Nix store dependencies.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "store_path": {
+            "type": "string",
+            "minLength": 44,
+            "maxLength": 256,
+            "pattern": "^/nix/store/[a-z0-9]{32}-[a-zA-Z0-9+._-]+$",
+            "description": "Existing Nix store path, no option flags"
+          }
+        },
+        "required": [
+          "store_path"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "-q",
+        "--references",
+        "{store_path}"
+      ],
+      "exampleArguments": {
+        "store_path": "${STORE_PATH}"
+      }
+    },
+    "nix_store_referrers": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Show Nix store paths depending on a path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "store_path": {
+            "type": "string",
+            "minLength": 44,
+            "maxLength": 256,
+            "pattern": "^/nix/store/[a-z0-9]{32}-[a-zA-Z0-9+._-]+$",
+            "description": "Existing Nix store path, no option flags"
+          }
+        },
+        "required": [
+          "store_path"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "-q",
+        "--referrers",
+        "{store_path}"
+      ],
+      "exampleArguments": {
+        "store_path": "${STORE_PATH}"
+      }
+    },
+    "nix_store_requisites": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Show full closure of dependencies for a Nix store path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "store_path": {
+            "type": "string",
+            "minLength": 44,
+            "maxLength": 256,
+            "pattern": "^/nix/store/[a-z0-9]{32}-[a-zA-Z0-9+._-]+$",
+            "description": "Existing Nix store path, no option flags"
+          }
+        },
+        "required": [
+          "store_path"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "-q",
+        "--requisites",
+        "{store_path}"
+      ],
+      "exampleArguments": {
+        "store_path": "${STORE_PATH}"
+      }
+    },
+    "nix_store_deriver": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Show Nix store derivation origin if available.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "store_path": {
+            "type": "string",
+            "minLength": 44,
+            "maxLength": 256,
+            "pattern": "^/nix/store/[a-z0-9]{32}-[a-zA-Z0-9+._-]+$",
+            "description": "Existing Nix store path, no option flags"
+          }
+        },
+        "required": [
+          "store_path"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "-q",
+        "--deriver",
+        "{store_path}"
+      ],
+      "exampleArguments": {
+        "store_path": "${STORE_PATH}"
+      }
+    },
+    "nix_store_size": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Show Nix store archive size.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "store_path": {
+            "type": "string",
+            "minLength": 44,
+            "maxLength": 256,
+            "pattern": "^/nix/store/[a-z0-9]{32}-[a-zA-Z0-9+._-]+$",
+            "description": "Existing Nix store path, no option flags"
+          }
+        },
+        "required": [
+          "store_path"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "-q",
+        "--size",
+        "{store_path}"
+      ],
+      "exampleArguments": {
+        "store_path": "${STORE_PATH}"
+      }
+    },
+    "nix_store_hash": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Show Nix store hash.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "store_path": {
+            "type": "string",
+            "minLength": 44,
+            "maxLength": 256,
+            "pattern": "^/nix/store/[a-z0-9]{32}-[a-zA-Z0-9+._-]+$",
+            "description": "Existing Nix store path, no option flags"
+          }
+        },
+        "required": [
+          "store_path"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "-q",
+        "--hash",
+        "{store_path}"
+      ],
+      "exampleArguments": {
+        "store_path": "${STORE_PATH}"
+      }
+    },
+    "nix_store_path_info": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "Get JSON path metadata for existing Nix store object.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "store_path": {
+            "type": "string",
+            "minLength": 44,
+            "maxLength": 256,
+            "pattern": "^/nix/store/[a-z0-9]{32}-[a-zA-Z0-9+._-]+$",
+            "description": "Existing Nix store path, no option flags"
+          }
+        },
+        "required": [
+          "store_path"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "path-info",
+        "--json",
+        "{store_path}"
+      ],
+      "exampleArguments": {
+        "store_path": "${STORE_PATH}"
+      }
+    },
+    "nix_profile_list": {
+      "category": "nix",
+      "mode": "readonly",
+      "description": "List Nix user profile packages, if profile exists.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "profile",
+        "list"
+      ],
+      "exampleArguments": {}
+    },
+    "nix_flake_metadata_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan trusted local flake metadata check (may fetch inputs).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Trusted local project under /workspace; used for advice only"
+          }
+        },
+        "required": [
+          "project"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "flake",
+        "metadata",
+        "path:/workspace/{project}"
+      ],
+      "exampleArguments": {
+        "project": "."
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_flake_check_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan local flake checks, which can build untrusted code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Trusted local project under /workspace; used for advice only"
+          }
+        },
+        "required": [
+          "project"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "flake",
+        "check",
+        "path:/workspace/{project}"
+      ],
+      "exampleArguments": {
+        "project": "."
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_flake_update_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan a reviewed flake lockfile update.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Trusted local project under /workspace; used for advice only"
+          }
+        },
+        "required": [
+          "project"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "flake",
+        "update",
+        "--flake",
+        "path:/workspace/{project}"
+      ],
+      "exampleArguments": {
+        "project": "."
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_build_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan a trusted Nix build; sandbox is disabled in this image.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "installable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Nix installable, guidance only; do not execute"
+          }
+        },
+        "required": [
+          "installable"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "build",
+        "{installable}"
+      ],
+      "exampleArguments": {
+        "installable": ".#hello"
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_develop_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan entering a Nix development shell, never auto-launch it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Trusted local project under /workspace; used for advice only"
+          }
+        },
+        "required": [
+          "project"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "develop",
+        "path:/workspace/{project}"
+      ],
+      "exampleArguments": {
+        "project": "."
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_shell_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan installing transient Nix shell packages.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "installable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Nix installable, guidance only; do not execute"
+          }
+        },
+        "required": [
+          "installable"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "shell",
+        "{installable}"
+      ],
+      "exampleArguments": {
+        "installable": ".#hello"
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_run_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan running a trusted Nix package or flake app.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "installable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Nix installable, guidance only; do not execute"
+          }
+        },
+        "required": [
+          "installable"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "run",
+        "{installable}"
+      ],
+      "exampleArguments": {
+        "installable": ".#hello"
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_profile_install_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan installing a Nix user-profile package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "installable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Nix installable, guidance only; do not execute"
+          }
+        },
+        "required": [
+          "installable"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "profile",
+        "install",
+        "{installable}"
+      ],
+      "exampleArguments": {
+        "installable": ".#hello"
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_profile_remove_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan removal of a Nix profile package.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "installable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Nix installable, guidance only; do not execute"
+          }
+        },
+        "required": [
+          "installable"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix",
+        "profile",
+        "remove",
+        "{installable}"
+      ],
+      "exampleArguments": {
+        "installable": ".#hello"
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_store_gc_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan destructive Nix store garbage collection, never run automatically.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-collect-garbage",
+        "-d"
+      ],
+      "exampleArguments": {},
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "nix_store_optimise_plan": {
+      "category": "nix",
+      "mode": "manual",
+      "description": "Plan Nix store optimisation that alters on-disk links.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "nix-store",
+        "--optimise"
+      ],
+      "exampleArguments": {},
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "workspace_list": {
+      "category": "workspace",
+      "mode": "readonly",
+      "description": "List up to 100 entries below /workspace without following escaping symlinks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Relative path below /workspace"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "directory-list",
+        "{path}"
+      ],
+      "exampleArguments": {}
+    },
+    "workspace_read": {
+      "category": "workspace",
+      "mode": "readonly",
+      "description": "Read up to 16 KiB of a non-sensitive UTF-8 file below /workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Relative regular UTF-8 file below /workspace; sensitive files rejected"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "file-read",
+        "{file}"
+      ],
+      "exampleArguments": {
+        "file": "catalog-test.txt"
+      }
+    },
+    "workspace_stat": {
+      "category": "workspace",
+      "mode": "readonly",
+      "description": "Get metadata of a workspace path, without its contents.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Relative path below /workspace"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "file-stat",
+        "{path}"
+      ],
+      "exampleArguments": {
+        "path": "."
+      }
+    },
+    "workspace_hash": {
+      "category": "workspace",
+      "mode": "readonly",
+      "description": "Compute SHA-256 of a non-sensitive regular file, at most 1 MiB.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Relative regular UTF-8 file below /workspace; sensitive files rejected"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "file-hash",
+        "{file}"
+      ],
+      "exampleArguments": {
+        "file": "catalog-test.txt"
+      }
+    },
+    "workspace_create": {
+      "category": "workspace",
+      "mode": "write",
+      "description": "Create a NEW UTF-8 file below /workspace; opt-in write and execute flags required.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Relative path below /workspace"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 16384,
+            "description": "New UTF-8 file content; never overwrite"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "file-create",
+        "{path}"
+      ],
+      "exampleArguments": {
+        "path": ".",
+        "content": "Needle catalog fixture"
+      }
+    },
+    "workflow_system_audit": {
+      "category": "workflow",
+      "mode": "readonly",
+      "description": "Run fixed read-only system identification, Alpine and Nix version, and disk inspection.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "workflow",
+        "system"
+      ],
+      "exampleArguments": {}
+    },
+    "workflow_dependency_audit": {
+      "category": "workflow",
+      "mode": "readonly",
+      "description": "Run an offline inventory of installed Alpine packages, apk and Nix versions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "workflow",
+        "dependencies"
+      ],
+      "exampleArguments": {}
+    },
+    "workflow_nix_health": {
+      "category": "workflow",
+      "mode": "readonly",
+      "description": "Run fixed Nix eval and store verification checks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "workflow",
+        "nix-health"
+      ],
+      "exampleArguments": {}
+    },
+    "workflow_project_plan": {
+      "category": "workflow",
+      "mode": "manual",
+      "description": "Prepare a human-reviewed flake project audit and build procedure.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Trusted local project under /workspace; used for advice only"
+          }
+        },
+        "required": [
+          "project"
+        ],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "workflow",
+        "project",
+        "{project}"
+      ],
+      "exampleArguments": {
+        "project": "."
+      },
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    },
+    "workflow_upgrade_plan": {
+      "category": "workflow",
+      "mode": "manual",
+      "description": "Prepare review steps for Alpine base, package and toolchain upgrades.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "commandPreview": [
+        "workflow",
+        "upgrade"
+      ],
+      "exampleArguments": {},
+      "warning": "Advisory only: never executed by Needle even with --execute; use human review and separate trusted procedures."
+    }
+  }
+}
