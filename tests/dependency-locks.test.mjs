@@ -59,8 +59,17 @@ test('GHCR-only release excludes the unused npm publisher and vulnerable bundled
       'Vulnerable minimatch reintroduced through ' + path + ': ' + pkg.version);
   }
 
-  const disabled = await import('../vendor/semantic-release-npm-disabled/index.js');
+  // Exercise the real installed module resolution, not merely the source
+  // file. npm ci must honor the dependency override and resolve to the
+  // repository-owned fail-closed publisher instead of the upstream package.
+  const resolved = import.meta.resolve('@semantic-release/npm');
+  assert.match(resolved, /\/vendor\/semantic-release-npm-disabled\/index\.js$/,
+    'npm ci did not install the audited local publisher replacement');
+  const disabled = await import('@semantic-release/npm');
+  assert.deepEqual(Object.keys(disabled.default).sort(),
+    ['addChannel', 'prepare', 'publish', 'verifyConditions']);
   for (const name of ['verifyConditions', 'prepare', 'publish', 'addChannel']) {
+    assert.equal(disabled[name], disabled.default[name]);
     assert.throws(() => disabled[name](),
       /npm registry publishing is disabled for this GHCR-only repository/);
   }
