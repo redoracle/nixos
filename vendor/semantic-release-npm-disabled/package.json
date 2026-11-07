@@ -1,0 +1,8 @@
+{
+  "name": "@semantic-release/npm",
+  "version": "13.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Deliberately disabled npm-registry publication in GHCR-only release automation",
+  "exports": "./index.js"
+}

@@ -18,6 +18,6 @@
     "semantic-release": "25.0.9"
   },
   "overrides": {
-    "minimatch": "11.0.5"
+    "@semantic-release/npm": "file:./vendor/semantic-release-npm-disabled"
   }
 }
