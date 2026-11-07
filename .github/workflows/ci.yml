@@ -38,6 +38,10 @@ jobs:
         with:
           node-version: "24"
           package-manager-cache: false
+      - name: Build security override lockfile for review (temporary)
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node -e 'const fs=require("node:fs"); console.log("SECURITY_LOCK_B64:"+fs.readFileSync("package-lock.json").toString("base64"))'
       - name: Install integrity-locked release tooling dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify release dependency compatibility
